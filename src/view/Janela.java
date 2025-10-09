@@ -5,13 +5,23 @@ import model.Despesa;
 
 import javax.swing.*;
 import java.awt.*;
-import java.util.List;
-import java.time.format.DateTimeFormatter;
-import java.time.format.TextStyle;
-import java.util.Locale;
 import java.awt.geom.Path2D;
 import javax.swing.plaf.basic.BasicScrollBarUI;
 import javax.swing.table.DefaultTableModel;
+import javafx.application.Platform;
+import javafx.embed.swing.JFXPanel;
+import javafx.scene.Scene;
+import javafx.scene.chart.PieChart;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+import java.time.format.DateTimeFormatter;
+import java.time.format.TextStyle;
+import java.util.Locale;
+import javafx.scene.control.Tooltip;
+
 
 public class Janela extends JFrame {
     private MoneyCountController controller;
@@ -20,6 +30,73 @@ public class Janela extends JFrame {
     private JLabel lblData;
     private JPanel listaDespesas;
     private CaixaTituloValor caixaSalario, caixaSaldo, caixaDespesas, caixaPoupanca;
+    private JFXPanel fxPanel;
+    private final int alturaGrafico = 300;
+
+    private void atualizarGrafico(JFXPanel fxPanel) {
+        List<Despesa> despesas = controller.getDespesasMesAtual();
+
+        // Agrupar por nome e somar valores
+        Map<String, Double> somaPorNome = new HashMap<>();
+        Map<String, java.awt.Color> coresPorNome = new HashMap<>();
+        for (Despesa d : despesas) {
+            somaPorNome.put(d.getNome(), somaPorNome.getOrDefault(d.getNome(), 0.0) + d.getMontante());
+            coresPorNome.put(d.getNome(), gerarCorParaNome(d.getNome()));
+        }
+
+        ObservableList<PieChart.Data> pieChartData = FXCollections.observableArrayList();
+        somaPorNome.forEach((nome, valor) -> pieChartData.add(new PieChart.Data(nome, valor)));
+
+        Platform.runLater(() -> {
+            PieChart chart = new PieChart(pieChartData);
+            chart.setLegendVisible(false);
+            chart.setLabelsVisible(true);
+            chart.setPrefHeight(400);
+            chart.setPrefWidth(600);
+
+            fxPanel.setScene(new Scene(chart));
+
+            // Espera um instante para garantir que os nós do gráfico existem
+            // depois de fxPanel.setScene(new Scene(chart));
+            Platform.runLater(() -> {
+                double total = somaPorNome.values().stream().mapToDouble(Double::doubleValue).sum();
+
+                for (PieChart.Data data : chart.getData()) {
+                    // captura valores que usaremos no listener
+                    final String nome = data.getName();
+                    final double valor = data.getPieValue();
+                    final double percentagem = total == 0 ? 0 : (valor / total) * 100.0;
+
+                    // cor (aplica quando o node ficar disponível)
+                    final java.awt.Color awtColor = coresPorNome.get(nome);
+                    final String rgb = awtColor == null ? null :
+                            String.format("%d, %d, %d",
+                                    awtColor.getRed(), awtColor.getGreen(), awtColor.getBlue());
+
+                    // listener que instala tooltip e aplica cor quando node existir
+                    data.nodeProperty().addListener((obs, oldNode, newNode) -> {
+                        if (newNode != null) {
+                            // aplica cor se disponível
+                            if (rgb != null) {
+                                newNode.setStyle("-fx-pie-color: rgb(" + rgb + ");");
+                            }
+                            // instala tooltip com nome + valor + percentagem
+                            Tooltip tip = new Tooltip(String.format("%s: %.2f € (%.1f%%)", nome, valor, percentagem));
+                            Tooltip.install(newNode, tip);
+                        }
+                    });
+
+                    // se node já existe (caso raro), aplica imediatamente
+                    if (data.getNode() != null) {
+                        if (rgb != null) data.getNode().setStyle("-fx-pie-color: rgb(" + rgb + ");");
+                        Tooltip tip = new Tooltip(String.format("%s: %.2f € (%.1f%%)", nome, valor, percentagem));
+                        Tooltip.install(data.getNode(), tip);
+                    }
+                }
+            });
+
+        });
+    }
 
 
 
@@ -45,12 +122,15 @@ public class Janela extends JFrame {
         // Atualiza a lista de ItemDespesa na esquerda
         listaDespesas.removeAll();
         for (Despesa despesa : controller.getDespesasMesAtual()) {
+            int idDespesa = despesa.getIdDespesa();
             String nome = despesa.getNome();
             String valor = String.format("%.2f €", despesa.getMontante());
-            listaDespesas.add(new ItemDespesa(nome, valor));
+            listaDespesas.add(new ItemDespesa(idDespesa, nome, valor));
         }
         listaDespesas.revalidate();
         listaDespesas.repaint();
+        // Atualiza gráfico
+        atualizarGrafico(fxPanel);
     }
 
 
@@ -64,8 +144,21 @@ public class Janela extends JFrame {
     }
 
 
+    // Reutiliza a função que você já tem para gerar cores do nome
+    private Color gerarCorParaNome(String nome) {
+        int hash = nome.hashCode();
+        int r = 100 + Math.abs(hash) % 100;
+        int g = 100 + Math.abs(hash / 100) % 100;
+        int b = 100 + Math.abs(hash / 10000) % 100;
+        return new Color(r, g, b);
+
+    }
+
+
+
     public Janela(MoneyCountController controller) {
         this.controller = controller;
+        fxPanel = new JFXPanel();
         lblData = new JLabel();
         lblMontante = new JLabel();
         lblSaldo = new JLabel();
@@ -145,6 +238,7 @@ public class Janela extends JFrame {
         add(painelMes, BorderLayout.NORTH);
 
 
+        
 
         // Painéis principal (dividido)
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
@@ -154,116 +248,132 @@ public class Janela extends JFrame {
 
         
 
-        // PAINEL ESQUERDO
+        // PAINEL ESQUERDO — Gráfico + Resumo
         Box painelEsquerdo = Box.createVerticalBox();
-        painelEsquerdo.setBackground(Color.LIGHT_GRAY);
+        painelEsquerdo.setBackground(Color.WHITE);
 
-        // Gráfico falso (para já)
-        int alturaJanela = Toolkit.getDefaultToolkit().getScreenSize().height;
-        int alturaGrafico = (int) (alturaJanela * 0.55);
+        fxPanel = new JFXPanel();
+        fxPanel.setPreferredSize(new Dimension(600, alturaGrafico));
+        fxPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 600));
+        fxPanel.setBackground(Color.WHITE);
+        painelEsquerdo.add(fxPanel);
 
-        JPanel painelGrafico = new JPanel();
-        painelGrafico.setPreferredSize(new Dimension(600, alturaGrafico));
-        painelGrafico.setMaximumSize(new Dimension(Integer.MAX_VALUE, alturaGrafico));
-        painelGrafico.setBackground(Color.WHITE); // Placeholder, trocar por gráfico real
-        painelGrafico.setBorder(BorderFactory.createLineBorder(Color.GRAY));
-        painelEsquerdo.add(painelGrafico);
+        // Atualiza gráfico
+        atualizarGrafico(fxPanel);
+
+        // PAINEL RESUMO (abaixo do gráfico)
+        String rendimento = String.format("%.2f €", controller.getRendimentoAtual());
+        String saldo = String.format("%.2f €", controller.getSaldoAtual());
+        String totalDespesas = String.format("%.2f €", controller.getTotalDespesas());
+        String poupanca = String.format("%.2f €", controller.getPoupancaAcumulada());
+
+        JPanel painelResumo = new JPanel(new GridBagLayout());
+        painelResumo.setBackground(Color.WHITE);
+        painelResumo.setMaximumSize(new Dimension(Integer.MAX_VALUE, 300)); // altura igual à anterior da direita
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(10, 20, 10, 20);
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+
+        // Montantes
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        caixaSalario = new CaixaTituloValor("Salário", rendimento);
+        painelResumo.add(caixaSalario, gbc);
+
+        gbc.gridx = 1;
+        gbc.gridy = 1;
+        caixaSaldo = new CaixaTituloValor("Saldo Disp.", saldo);
+        painelResumo.add(caixaSaldo, gbc);
+
+        gbc.gridx = 1;
+        gbc.gridy = 0;
+        caixaDespesas = new CaixaTituloValor("Despesas", totalDespesas);
+        painelResumo.add(caixaDespesas, gbc);
+
+        gbc.gridx = 0;
+        gbc.gridy = 1;
+        caixaPoupanca = new CaixaTituloValor("Poupança", poupanca);
+        //gbc.gridwidth = 2;
+        painelResumo.add(caixaPoupanca, gbc);
+
+        painelEsquerdo.add(Box.createVerticalStrut(10));
+        painelEsquerdo.add(painelResumo);
+
+        // PAINEL DIREITO — Despesas
+        JPanel painelDireito = new JPanel();
+        painelDireito.setLayout(new BorderLayout());
+        painelDireito.setBackground(Color.lightGray);
+        painelDireito.setPreferredSize(new Dimension(400, Integer.MAX_VALUE)); // altura igual ao painelEsquerdo
 
         // Painel horizontal para o título "Despesas" + botões
-        // Cria o painel horizontal
         JPanel painelTituloComBotoes = new JPanel(new FlowLayout(FlowLayout.LEFT, 20, 10));
         painelTituloComBotoes.setOpaque(false);
 
         // Adiciona o título "Despesas"
         painelTituloComBotoes.add(new CaixaTituloValor("Despesas"));
 
-        // Cria os botões
-        JButton btnDespesa = new BotaoEstiloTitulo("+ Despesa", new Color(126, 217, 87)); // Verde
-        JButton btnDespesaFixa = new BotaoEstiloTitulo("+ Despesa Fixa", new Color(203, 108, 230)); // Roxo
+        // Botões
+        JButton btnDespesa = new BotaoEstiloTitulo("+ Despesa", new Color(126, 217, 87));
+        JButton btnDespesaFixa = new BotaoEstiloTitulo("+ Despesa Fixa", new Color(203, 108, 230));
+        btnDespesa.addActionListener(e -> {
+            String nome = JOptionPane.showInputDialog(this, "Nome da despesa:");
+            if (nome == null || nome.trim().isEmpty()) return;
 
-        // Adiciona os botões
+            String valorStr = JOptionPane.showInputDialog(this, "Valor da despesa (€):");
+            if (valorStr == null || valorStr.trim().isEmpty()) return;
+
+            try {
+                double valor = Double.parseDouble(valorStr);
+                controller.adicionarDespesa(nome, valor, false);
+                atualizarVista();
+            } catch (NumberFormatException ex) {
+                JOptionPane.showMessageDialog(this, "Valor inválido!", "Erro", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+
+        btnDespesaFixa.addActionListener(e -> {
+            String nome = JOptionPane.showInputDialog(this, "Nome da despesa fixa:");
+            if (nome == null || nome.trim().isEmpty()) return;
+
+            String valorStr = JOptionPane.showInputDialog(this, "Valor da despesa (€):");
+            if (valorStr == null || valorStr.trim().isEmpty()) return;
+
+            try {
+                double valor = Double.parseDouble(valorStr);
+                controller.adicionarDespesa(nome, valor, true);
+                atualizarVista();
+            } catch (NumberFormatException ex) {
+                JOptionPane.showMessageDialog(this, "Valor inválido!", "Erro", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+
         painelTituloComBotoes.add(btnDespesa);
         painelTituloComBotoes.add(btnDespesaFixa);
-
-        // Adiciona o painel à esquerda (painelEsquerdo)
-        painelEsquerdo.add(Box.createVerticalStrut(10));
-        painelEsquerdo.add(painelTituloComBotoes);
-        painelEsquerdo.add(Box.createVerticalStrut(10));
-
+        painelDireito.add(painelTituloComBotoes, BorderLayout.NORTH);
 
         // Lista de despesas com scroll
         listaDespesas = new JPanel();
         listaDespesas.setLayout(new BoxLayout(listaDespesas, BoxLayout.Y_AXIS));
-        
-        List<Despesa> despesas = controller.getDespesasMesAtual();
-
-        for (Despesa despesa : despesas) {
+        for (Despesa despesa : controller.getDespesasMesAtual()) {
+            int idDespesa = despesa.getIdDespesa();
             String nome = despesa.getNome();
             String valor = String.format("%.2f €", despesa.getMontante());
-            listaDespesas.add(new ItemDespesa(nome, valor));
+            listaDespesas.add(new ItemDespesa(idDespesa, nome, valor));
         }
-
 
         JScrollPane scrollDespesas = new JScrollPane(listaDespesas);
         scrollDespesas.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
         scrollDespesas.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
         scrollDespesas.setBorder(BorderFactory.createEmptyBorder(0, 0, 50, 0));
-        scrollDespesas.setPreferredSize(new Dimension(300, 300));
+        scrollDespesas.setPreferredSize(new Dimension(400, 300));
         scrollDespesas.getVerticalScrollBar().setUI(new ScrollBarCinzaArredondada());
-
-        painelEsquerdo.add(scrollDespesas);
-
-
-        // PAINEL DIREITO — Resumo
-        String rendimento = String.format("%.2f €", controller.getRendimentoAtual());
-        String saldo = String.format("%.2f €", controller.getSaldoAtual());
-        String totalDespesas = String.format("%.2f €", controller.getTotalDespesas());
-        String poupanca = String.format("%.2f €", controller.getPoupancaAcumulada());
-
-
-        JPanel painelDireito = new JPanel(new GridBagLayout());
-        painelDireito.setBackground(Color.WHITE);
-
-        // Novo painel com os blocos de montantes
-        JPanel painelMontantes = new JPanel(new GridBagLayout());
-        painelMontantes.setOpaque(false);
-
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(10, 20, 10, 20);
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-
-        // Montante no topo, centralizado (linha 0, col 0 e colSpan 2)
-        gbc.gridx = 0;
-        gbc.gridy = 0;
-        gbc.gridwidth = 1;
-        caixaSalario = new CaixaTituloValor("Salário", rendimento);
-        painelMontantes.add(caixaSalario, gbc);
-
-        // Saldo à esquerda (linha 1, col 0)
-        gbc.gridx = 0;
-        gbc.gridy = 1;
-        gbc.gridwidth = 1;
-        caixaSaldo = new CaixaTituloValor("Saldo Disp.", saldo);
-        painelMontantes.add(caixaSaldo, gbc);
-
-        // Despesas à direita (linha 1, col 1)
-        gbc.gridx = 1;
-        gbc.gridy = 1;
-        caixaDespesas = new CaixaTituloValor("Despesas", totalDespesas);
-        painelMontantes.add(caixaDespesas, gbc);
-
-        // Poupança em baixo, centralizado (linha 2, col 0 e colSpan 2)
-        gbc.gridx = 0;
-        gbc.gridy = 2;
-        gbc.gridwidth = 1;
-        caixaPoupanca = new CaixaTituloValor("Poupança", poupanca);
-        painelMontantes.add(caixaPoupanca, gbc);
-
-        painelDireito.add(painelMontantes, gbc);
+        painelDireito.add(scrollDespesas, BorderLayout.CENTER);
 
         // Adiciona ao JSplitPane
         splitPane.setLeftComponent(painelEsquerdo);
         splitPane.setRightComponent(painelDireito);
+
 
         // Adiciona à janela principal
         add(splitPane, BorderLayout.CENTER);
@@ -364,7 +474,7 @@ public class Janela extends JFrame {
                     Graphics2D g2 = (Graphics2D) g.create();
                     g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                     g2.setColor(new Color(220, 220, 220));
-                    g2.fillRoundRect(0, 0, getWidth(), getHeight(), 90, 90);
+                    g2.fillRoundRect(0, 0, getWidth(), getHeight(), 70, 70);
                     g2.dispose();
                 }
 
@@ -388,7 +498,7 @@ public class Janela extends JFrame {
             fundoTitulo.setOpaque(false);
 
             JLabel lblTitulo = new JLabel(titulo);
-            lblTitulo.setFont(new Font("Arial", Font.BOLD, 62));
+            lblTitulo.setFont(new Font("Arial", Font.BOLD, 42));
 
             fundoTitulo.add(lblTitulo);
 
@@ -397,10 +507,23 @@ public class Janela extends JFrame {
                 JButton btnEditar = new BotaoRedondoAzul("✏️");
                 btnEditar.setToolTipText("Editar Montante");
                 fundoTitulo.add(btnEditar);
+
+                btnEditar.addActionListener(e -> {
+                    String novoSalarioStr = JOptionPane.showInputDialog(this, "Novo salário (€):");
+                    if (novoSalarioStr == null || novoSalarioStr.trim().isEmpty()) return;
+
+                    try {
+                        double novoSalario = Double.parseDouble(novoSalarioStr);
+                        ((Janela) SwingUtilities.getWindowAncestor(this)).controller.atualizarRendimento(novoSalario);
+                        ((Janela) SwingUtilities.getWindowAncestor(this)).atualizarVista();
+                    } catch (NumberFormatException ex) {
+                        JOptionPane.showMessageDialog(this, "Valor inválido!", "Erro", JOptionPane.ERROR_MESSAGE);
+                    }
+                });
             }
 
             lblValor = new JLabel(valor);
-            lblValor.setFont(new Font("Arial", Font.PLAIN, 46));
+            lblValor.setFont(new Font("Arial", Font.PLAIN, 26));
             lblValor.setHorizontalAlignment(SwingConstants.LEFT);
             JPanel valorPanel = new JPanel(new BorderLayout());
             valorPanel.setOpaque(false);
@@ -416,14 +539,14 @@ public class Janela extends JFrame {
         private static class BotaoRedondoAzul extends JButton {
             public BotaoRedondoAzul(String texto) {
                 super(texto);
-                setPreferredSize(new Dimension(55, 55));
+                setPreferredSize(new Dimension(35, 35));
                 setMargin(new Insets(0, 0, 0, 0)); 
                 setFocusPainted(false);
                 setContentAreaFilled(false);
                 setOpaque(false);
                 setBorderPainted(false);
                 setForeground(Color.WHITE);
-                setFont(new Font("Arial", Font.BOLD, 42));
+                setFont(new Font("Arial", Font.BOLD, 22));
             }
 
             @Override
@@ -486,7 +609,7 @@ public class Janela extends JFrame {
     }
 
     private static class ItemDespesa extends JPanel {
-        public ItemDespesa(String nome, String valor) {
+        public ItemDespesa(int idDespesa, String nome, String valor) {
             setLayout(new FlowLayout(FlowLayout.LEFT, 10, 10));
             setOpaque(false);
 
@@ -520,6 +643,32 @@ public class Janela extends JFrame {
 
             JButton btnEditar = new BotaoRedondoColorido("✏️", new Color(82, 113, 255));
             JButton btnRemover = new BotaoRedondoColorido("🗑️", new Color(255, 82, 82));
+
+            btnEditar.addActionListener(e -> {
+                String novoValorStr = JOptionPane.showInputDialog(this, "Novo valor para " + nome + ":");
+                if (novoValorStr == null || novoValorStr.trim().isEmpty()) return;
+
+                try {
+                    double novoValor = Double.parseDouble(novoValorStr);
+                    ((Janela) SwingUtilities.getWindowAncestor(this)).controller.editarDespesa(idDespesa, novoValor);
+                    ((Janela) SwingUtilities.getWindowAncestor(this)).atualizarVista();
+                } catch (NumberFormatException ex) {
+                    JOptionPane.showMessageDialog(this, "Valor inválido!", "Erro", JOptionPane.ERROR_MESSAGE);
+                }
+            });
+
+            btnRemover.addActionListener(e -> {
+                int opcao = JOptionPane.showConfirmDialog(this,
+                        "Remover despesa \"" + nome + "\"?",
+                        "Confirmação",
+                        JOptionPane.YES_NO_OPTION);
+                if (opcao == JOptionPane.YES_OPTION) {
+                    ((Janela) SwingUtilities.getWindowAncestor(this)).controller.removerDespesa(idDespesa);
+                    ((Janela) SwingUtilities.getWindowAncestor(this)).atualizarVista();
+                }
+            });
+
+
 
             add(painelConteudo);
             add(btnEditar);

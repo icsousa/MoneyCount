@@ -101,6 +101,11 @@ public class Registo {
         this.despesas.put(d.getIdDespesa(), d.clone());
     }
 
-
-    
+    /**
+     * 
+     * @param rendimento
+     */
+    public void setRendimento(double rendimento) {
+        this.rendimento = rendimento;
+    } 
 }

@@ -74,4 +74,12 @@ public class Despesa {
     public String getNome() {
         return this.nome;
     }
+
+    /**
+     * 
+     * @param montante
+     */
+    public void setMontante(double montante){
+        this.montante = montante;
+    }
 }

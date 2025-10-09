@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import model.Despesa;
+import model.DespesaFixa;
 import model.MoneyCount;
 import model.Registo;
 
@@ -177,6 +178,57 @@ public class MoneyCountController {
         dataModelo = dataModelo.minusMonths(1);
         verificarOuCriarRegisto();
     }
+
+    /**
+     * 
+     * @param nome
+     * @param valor
+     * @param fixa
+     */
+    public void adicionarDespesa(String nome, double valor, boolean fixa) {
+        Registo registo = getRegistoAtual();
+
+        Despesa nova;
+        if (fixa) {
+            nova = new DespesaFixa(nome, valor, false);
+        } else {
+            nova = new Despesa(nome, valor);
+        }
+
+        registo.adicionarDespesa(nova);
+    }
+
+    /**
+     * 
+     * @param idDespesa
+     */
+    public void removerDespesa(int idDespesa) {
+        Registo registo = getRegistoAtual();
+        registo.getDespesas().remove(idDespesa);
+    }
+
+    /**
+     * 
+     * @param idDespesa
+     * @param novoValor
+     */
+    public void editarDespesa(int idDespesa, double novoValor) {
+        Registo registo = getRegistoAtual();
+        Despesa despesa = registo.getDespesas().get(idDespesa);
+        if (despesa != null) {
+            despesa.setMontante(novoValor);
+        }
+    }
+    
+    /**
+     * 
+     * @param novoRendimento
+     */
+    public void atualizarRendimento(double novoRendimento){
+        Registo registo = getRegistoAtual();
+        registo.setRendimento(novoRendimento);
+    }
+
 
     /**
      * Verificar se existe registo, se não existir, cria um.
