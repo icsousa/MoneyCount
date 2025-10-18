@@ -1,10 +1,13 @@
 package model;
 
+import utils.Serializer;
+
+import java.io.Serializable;
 import java.time.YearMonth;
 import java.util.HashMap;
 import java.util.Map;
 
-public class Registo {
+public class Registo implements Serializable {
     
     /**
      * Variáveis de instância.
@@ -86,11 +89,19 @@ public class Registo {
      * @return Devolve o valor total gasto em despesas.
      */
     public double getTotalDespesas() {
-        return despesas.values()
-                    .stream()
-                    .mapToDouble(Despesa::getMontante)
-                    .sum();
+        double total = 0;
+        for (Despesa d : despesas.values()) {
+            if (d instanceof DespesaFixa df) {
+                if (df.isPago()) {
+                    total += df.getMontante();
+                }
+            } else {
+                total += d.getMontante();
+            }
+        }
+        return total;
     }
+
 
     /**
      * Adiciona uma despesa ao registo.
@@ -98,7 +109,8 @@ public class Registo {
      * @param d Despesa adicionada.
      */
     public void adicionarDespesa(Despesa d) {
-        this.despesas.put(d.getIdDespesa(), d.clone());
+        Despesa c = d.clone();
+        this.despesas.put(c.getIdDespesa(), c);
     }
 
     /**

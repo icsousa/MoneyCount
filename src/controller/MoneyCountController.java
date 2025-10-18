@@ -14,6 +14,7 @@ import model.Despesa;
 import model.DespesaFixa;
 import model.MoneyCount;
 import model.Registo;
+import utils.Serializer;
 
 public class MoneyCountController {
     
@@ -66,7 +67,7 @@ public class MoneyCountController {
      * 
      * @return Registo atual.
      */
-    private Registo getRegistoAtual() {
+    public Registo getRegistoAtual() {
         return (modelo.getRegistos().get(dataModelo));
     }
 
@@ -95,10 +96,20 @@ public class MoneyCountController {
      * 
      * @return Rendimento atual.
      */
-    public Double getTotalDespesas() {
-        Registo r = getRegistoAtual();
-        return r.getTotalDespesas();
+    public double getTotalDespesas() {
+        double total = 0;
+        for (Despesa d : getRegistoAtual().getDespesas().values()) {
+            if (d instanceof DespesaFixa df) {
+                if (df.isPago()) {
+                    total += df.getMontante(); // só soma se estiver paga
+                }
+            } else {
+                total += d.getMontante(); // despesa normal conta sempre
+            }
+        }
+        return total;
     }
+
 
     /**
      * Obter todas as despesas do mês.
@@ -154,7 +165,7 @@ public class MoneyCountController {
         for (Map.Entry<YearMonth, Registo> entry : modelo.getRegistos().entrySet()) {
             YearMonth data = entry.getKey();
 
-            if (data.isBefore(hoje)) {
+            if (!data.isAfter(hoje)) {
                 Registo r = entry.getValue();
                 total += r.getRendimento() - r.getTotalDespesas();
             }
@@ -231,13 +242,105 @@ public class MoneyCountController {
 
 
     /**
-     * Verificar se existe registo, se não existir, cria um.
+     * Verifica se já existe registo para o mês atual.
+     * - Se não existir: cria novo e copia despesas fixas do mês anterior.
+     * - Se já existir: atualiza as despesas fixas (adiciona novas que não existam).
      */
     private void verificarOuCriarRegisto() {
-        if (!modelo.getRegistos().containsKey(dataModelo)) {
-            modelo.getRegistos().put(dataModelo, new Registo(dataModelo, 0));
+        YearMonth mesAnterior = dataModelo.minusMonths(1);
+        Registo registoAtual = modelo.getRegistos().get(dataModelo);
+        Registo anterior = modelo.getRegistos().get(mesAnterior);
+
+        // Caso não exista o registo atual, cria-o
+        if (registoAtual == null) {
+            double rendimento = (anterior != null) ? anterior.getRendimento() : 0.0;
+            registoAtual = new Registo(dataModelo, rendimento);
+            modelo.getRegistos().put(dataModelo, registoAtual);
+        }
+
+        // Se houver registo anterior, copia/adiciona despesas fixas que ainda não existam
+        if (anterior != null) {
+            for (Despesa d : anterior.getDespesas().values()) {
+                if (d instanceof DespesaFixa df) {
+                    boolean jaExiste = registoAtual.getDespesas().values().stream()
+                        .anyMatch(existing -> existing.getNome().equals(df.getNome()) && existing instanceof DespesaFixa);
+
+                    if (!jaExiste) {
+                        DespesaFixa nova = new DespesaFixa(df.getNome(), df.getMontante(), false);
+                        registoAtual.adicionarDespesa(nova);
+                    }
+                }
+            }
         }
     }
+
+    /**
+     * 
+     * @param idDespesa
+     * @param paga
+     */
+    public void marcarDespesaComoPaga(int idDespesa, boolean paga) {
+        List<Despesa> lista = this.getDespesasMesAtual(); // garantees que isto devolve a lista "viva", não cópia
+        for (Despesa d : lista) {
+            if (d.getIdDespesa() == idDespesa) {
+                if (d instanceof DespesaFixa) {
+                    DespesaFixa df = (DespesaFixa) d;
+                    df.setPago(paga); // precisa existir setter
+                    // Se tiveres persistência, grava aqui (ex.: salvar no ficheiro/bd)
+                } 
+            }
+        }
+    }
+
+    // Editar despesa fixa
+    public void editarDespesaFixaFuturas(int idDespesa, double novoValor) {
+        Registo registoAtual = getRegistoAtual();
+        if (registoAtual == null) return;
+
+        Despesa despesaAtual = registoAtual.getDespesas().get(idDespesa);
+        if (!(despesaAtual instanceof DespesaFixa)) return;
+
+        // Atualiza o valor da despesa do mês atual diretamente
+        despesaAtual.setMontante(novoValor);
+
+        // Identificador único (caso exista)
+        int idDespesaFixa = despesaAtual.getIdDespesa();
+        String nomeDespesa = despesaAtual.getNome();
+
+        // Atualiza todos os registos a partir do mês atual
+        for (Registo r : modelo.getRegistos().values()) {
+            if (!r.getData().isBefore(registoAtual.getData())) {
+                for (Despesa d : r.getDespesas().values()) {
+                    if (d instanceof DespesaFixa df) {
+                        boolean mesmaDespesa = (df.getIdDespesa() == idDespesaFixa)
+                            || df.getNome().equals(nomeDespesa);
+                        if (mesmaDespesa) {
+                            df.setMontante(novoValor);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+
+
+
+    public void removerDespesaFixaFuturas(int idDespesa) {
+        Registo registo = getRegistoAtual();
+        Despesa despesaAtual = registo.getDespesas().get(idDespesa);
+        String nomeDespesa = despesaAtual.getNome();
+        for (Registo r : modelo.getRegistos().values()) {
+            if (!r.getData().isBefore(registo.getData())) {
+                r.getDespesas().values().removeIf(d -> {
+                    boolean cond = d instanceof DespesaFixa df && df.getNome().equals(nomeDespesa);
+                    return cond;
+                });
+            }
+        }
+    }
+
+
 }
 
 

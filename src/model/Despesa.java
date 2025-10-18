@@ -1,8 +1,9 @@
 package model;
 
+import java.io.Serializable;
 import java.time.LocalDate;
 
-public class Despesa {
+public class Despesa implements Serializable  {
 
     /**
      * Variaveis de instância.
@@ -37,6 +38,7 @@ public class Despesa {
         this.montante = outra.montante;
         this.dia = LocalDate.of(outra.dia.getYear(), outra.dia.getMonth(), outra.dia.getDayOfMonth());
     }
+
 
     /**
      * Método clone.
@@ -82,4 +84,5 @@ public class Despesa {
     public void setMontante(double montante){
         this.montante = montante;
     }
+
 }

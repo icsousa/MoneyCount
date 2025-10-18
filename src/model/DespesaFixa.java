@@ -1,8 +1,11 @@
 package model;
 
+import utils.Serializer;
+
+import java.io.Serializable;
 import java.time.LocalDate;
 
-public class DespesaFixa extends Despesa {
+public class DespesaFixa extends Despesa implements Serializable{
 
     private boolean pago;
 
@@ -36,7 +39,7 @@ public class DespesaFixa extends Despesa {
         return new DespesaFixa(this);
     }
 
-    // Getter e setter para o campo pago
+
     public boolean isPago() {
         return pago;
     }

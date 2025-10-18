@@ -1,11 +1,16 @@
 package model;
 
 import java.util.Collection;
+import utils.Serializer;
+
+import java.io.Serializable;
 import java.time.YearMonth;
 import java.util.HashMap;
 import java.util.Map;
 
-public class MoneyCount {
+import javax.xml.crypto.Data;
+
+public class MoneyCount implements Serializable {
     /**
      * Variavel de instância.
      */
@@ -23,6 +28,20 @@ public class MoneyCount {
             this.registos.put(r.getData(), r.clone());
         }
     }
+
+    /**
+     * Construtor de cópia.
+     * 
+     * @param outro Objeto MoneyCount a ser copiado.
+     */
+    public MoneyCount(MoneyCount outro) {
+        this.registos = new HashMap<>();
+
+        // Copiar cada registro do outro objeto
+        for (Map.Entry<YearMonth, Registo> entry : outro.registos.entrySet()) {
+            this.registos.put(entry.getKey(), entry.getValue().clone());
+        }
+}
 
     /**
      * Construtor Vazio.

@@ -2,8 +2,11 @@ package view;
 
 import controller.MoneyCountController;
 import model.Despesa;
+import model.DespesaFixa;
 
 import javax.swing.*;
+import javax.swing.GroupLayout.Group;
+
 import java.awt.*;
 import java.awt.geom.Path2D;
 import javax.swing.plaf.basic.BasicScrollBarUI;
@@ -53,8 +56,11 @@ public class Janela extends JFrame {
             chart.setLabelsVisible(true);
             chart.setPrefHeight(400);
             chart.setPrefWidth(600);
+            chart.setStyle("-fx-background-color: white;");
 
-            fxPanel.setScene(new Scene(chart));
+            Scene scene = new Scene(chart);
+            scene.setFill(javafx.scene.paint.Color.WHITE); // <- FUNDO BRANCO
+            fxPanel.setScene(scene);
 
             // Espera um instante para garantir que os nós do gráfico existem
             // depois de fxPanel.setScene(new Scene(chart));
@@ -100,7 +106,7 @@ public class Janela extends JFrame {
 
 
 
-    private void atualizarVista() {
+    public void atualizarVista() {
         // Atualiza o mês no topo
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.of("pt", "PT"));
         lblData.setText(controller.getDataModelo().format(formatter));
@@ -119,18 +125,39 @@ public class Janela extends JFrame {
         // Atualiza a tabela de despesas
         atualizarTabelaDespesas();
 
-        // Atualiza a lista de ItemDespesa na esquerda
         listaDespesas.removeAll();
+        listaDespesas.setLayout(new GridBagLayout());
+        listaDespesas.setBackground(new Color(238, 238, 238)); // mesmo cinzento do painel direito
+        listaDespesas.setOpaque(true);
+
+        GridBagConstraints gbcList = new GridBagConstraints();
+        gbcList.gridx = 0;
+        gbcList.gridy = 0;
+        gbcList.fill = GridBagConstraints.HORIZONTAL;
+        gbcList.anchor = GridBagConstraints.NORTH;
+        gbcList.insets = new Insets(2, 2, 2, 2); // espaçamento entre itens
+
         for (Despesa despesa : controller.getDespesasMesAtual()) {
             int idDespesa = despesa.getIdDespesa();
             String nome = despesa.getNome();
             String valor = String.format("%.2f €", despesa.getMontante());
-            listaDespesas.add(new ItemDespesa(idDespesa, nome, valor));
+            boolean fixa = despesa instanceof DespesaFixa;
+            boolean paga = fixa && ((DespesaFixa) despesa).isPago();
+
+            listaDespesas.add(new ItemDespesa(idDespesa, nome, valor, fixa, paga), gbcList);
+            gbcList.gridy++;
         }
+
+        // cola elástica para empurrar o conteúdo para cima quando há poucas despesas
+        gbcList.weighty = 1.0;
+        listaDespesas.add(Box.createVerticalGlue(), gbcList);
+
         listaDespesas.revalidate();
         listaDespesas.repaint();
+        SwingUtilities.invokeLater(() -> listaDespesas.updateUI());
         // Atualiza gráfico
         atualizarGrafico(fxPanel);
+
     }
 
 
@@ -139,7 +166,11 @@ public class Janela extends JFrame {
         model.setRowCount(0); // Limpa todas as linhas
 
         for (Despesa despesa : controller.getDespesasMesAtual()) {
-            model.addRow(new Object[]{despesa.getNome(), String.format("%.2f €", despesa.getMontante())});
+            model.addRow(new Object[]{
+                despesa.getNome(),
+                String.format("%.2f €", despesa.getMontante()),
+                despesa instanceof DespesaFixa ? "Fixa" : "Normal"
+            });
         }
     }
 
@@ -251,11 +282,11 @@ public class Janela extends JFrame {
         // PAINEL ESQUERDO — Gráfico + Resumo
         Box painelEsquerdo = Box.createVerticalBox();
         painelEsquerdo.setBackground(Color.WHITE);
+        painelEsquerdo.setOpaque(true);
 
         fxPanel = new JFXPanel();
         fxPanel.setPreferredSize(new Dimension(600, alturaGrafico));
         fxPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 600));
-        fxPanel.setBackground(Color.WHITE);
         painelEsquerdo.add(fxPanel);
 
         // Atualiza gráfico
@@ -269,6 +300,7 @@ public class Janela extends JFrame {
 
         JPanel painelResumo = new JPanel(new GridBagLayout());
         painelResumo.setBackground(Color.WHITE);
+        painelResumo.setOpaque(true);
         painelResumo.setMaximumSize(new Dimension(Integer.MAX_VALUE, 300)); // altura igual à anterior da direita
 
         GridBagConstraints gbc = new GridBagConstraints();
@@ -303,19 +335,18 @@ public class Janela extends JFrame {
         // PAINEL DIREITO — Despesas
         JPanel painelDireito = new JPanel();
         painelDireito.setLayout(new BorderLayout());
-        painelDireito.setBackground(Color.lightGray);
+        painelDireito.setBackground(new Color(238, 238, 238));
+        painelDireito.setOpaque(true);
         painelDireito.setPreferredSize(new Dimension(400, Integer.MAX_VALUE)); // altura igual ao painelEsquerdo
 
         // Painel horizontal para o título "Despesas" + botões
         JPanel painelTituloComBotoes = new JPanel(new FlowLayout(FlowLayout.LEFT, 20, 10));
         painelTituloComBotoes.setOpaque(false);
 
-        // Adiciona o título "Despesas"
-        painelTituloComBotoes.add(new CaixaTituloValor("Despesas"));
-
         // Botões
-        JButton btnDespesa = new BotaoEstiloTitulo("+ Despesa", new Color(126, 217, 87));
-        JButton btnDespesaFixa = new BotaoEstiloTitulo("+ Despesa Fixa", new Color(203, 108, 230));
+        JButton btnDespesa = new BotaoEstiloTitulo("+ Despesa", new Color(174, 239, 164));   // verde pastel
+        JButton btnDespesaFixa = new BotaoEstiloTitulo("+ Despesa Fixa", new Color(220, 167, 235)); // lilás pastel
+
         btnDespesa.addActionListener(e -> {
             String nome = JOptionPane.showInputDialog(this, "Nome da despesa:");
             if (nome == null || nome.trim().isEmpty()) return;
@@ -353,14 +384,28 @@ public class Janela extends JFrame {
         painelDireito.add(painelTituloComBotoes, BorderLayout.NORTH);
 
         // Lista de despesas com scroll
-        listaDespesas = new JPanel();
-        listaDespesas.setLayout(new BoxLayout(listaDespesas, BoxLayout.Y_AXIS));
+        listaDespesas = new JPanel(new GridBagLayout());
+        listaDespesas.setBackground(new Color(238, 238, 238)); // fundo igual ao painel direito
+        listaDespesas.setOpaque(true);
+
+        GridBagConstraints gbcList = new GridBagConstraints();
+        gbcList.gridx = 0;
+        gbcList.gridy = 0;
+        gbcList.fill = GridBagConstraints.HORIZONTAL;
+        gbcList.anchor = GridBagConstraints.NORTH;
+        gbcList.insets = new Insets(2, 2, 2, 2); // espaçamento entre itens
+
         for (Despesa despesa : controller.getDespesasMesAtual()) {
             int idDespesa = despesa.getIdDespesa();
             String nome = despesa.getNome();
             String valor = String.format("%.2f €", despesa.getMontante());
-            listaDespesas.add(new ItemDespesa(idDespesa, nome, valor));
+            listaDespesas.add(new ItemDespesa(idDespesa, nome, valor), gbcList);
+            gbcList.gridy++;
         }
+
+        // “cola” flexível no fim para manter a distância
+        gbcList.weighty = 1.0;
+        listaDespesas.add(Box.createVerticalGlue(), gbcList);
 
         JScrollPane scrollDespesas = new JScrollPane(listaDespesas);
         scrollDespesas.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
@@ -575,7 +620,7 @@ public class Janela extends JFrame {
         public BotaoEstiloTitulo(String texto, Color corFundo) {
             super(texto);
             this.corFundo = corFundo;
-            setFont(new Font("Arial", Font.BOLD, 36));
+            setFont(new Font("Arial", Font.BOLD, 26));
             setForeground(new Color(84, 84, 84));
             setFocusPainted(false);
             setContentAreaFilled(false);
@@ -588,7 +633,7 @@ public class Janela extends JFrame {
         public Dimension getPreferredSize() {
             FontMetrics fm = getFontMetrics(getFont());
             int width = fm.stringWidth(getText()) + 50;
-            int height = 70; // Altura semelhante à do título
+            int height = 50; // Altura semelhante à do título
             return new Dimension(width, height);
         }
 
@@ -597,7 +642,7 @@ public class Janela extends JFrame {
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             g2.setColor(corFundo);
-            g2.fillRoundRect(0, 0, getWidth(), getHeight(), 75, 75);
+            g2.fillRoundRect(0, 0, getWidth(), getHeight(), 50, 50);
             super.paintComponent(g);
             g2.dispose();
         }
@@ -609,49 +654,111 @@ public class Janela extends JFrame {
     }
 
     private static class ItemDespesa extends JPanel {
+        private JPanel painelConteudo;
+        private JLabel lblNome;
+        private JLabel lblValor;
+
         public ItemDespesa(int idDespesa, String nome, String valor) {
+            this(idDespesa, nome, valor, false, true); // compatibilidade
+        }
+
+        public ItemDespesa(int idDespesa, String nome, String valor, boolean fixa, boolean paga) {
             setLayout(new FlowLayout(FlowLayout.LEFT, 10, 10));
             setOpaque(false);
 
-            // Painel colorido arredondado com nome e valor
-            JPanel painelConteudo = new JPanel() {
+            // Checkbox apenas se for despesa fixa
+            final JCheckBox chkPaga = fixa ? new JCheckBox() : null;
+            if (chkPaga != null) {
+                chkPaga.setSelected(paga);
+                chkPaga.setOpaque(false);
+                chkPaga.setToolTipText("Marcar como paga");
+            }
+
+            // Painel colorido arredondado
+            // Painel de conteúdo (onde fica o fundo colorido e todos os elementos)
+            painelConteudo = new JPanel() {
                 @Override
                 protected void paintComponent(Graphics g) {
                     super.paintComponent(g);
+
                     Graphics2D g2 = (Graphics2D) g.create();
                     g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                    g2.setColor(gerarCorParaNome(nome));
+
+                    Janela janela = (Janela) SwingUtilities.getWindowAncestor(ItemDespesa.this);
+                    Color base = janela.gerarCorParaNome(nome);
+
+                    int alpha = 255;
+
+                    if (fixa && chkPaga != null && !chkPaga.isSelected()) {
+                        alpha = 100;
+                        lblNome.setForeground(new Color(90, 90, 90));
+                        lblValor.setForeground(new Color(90, 90, 90));
+
+                    } else if (fixa && chkPaga != null && chkPaga.isSelected()) {
+                        alpha = 255;
+                        lblNome.setForeground(Color.WHITE);
+                        lblValor.setForeground(Color.WHITE);
+
+                    }
+
+                    base = new Color(base.getRed(), base.getGreen(), base.getBlue(), alpha);
+                    g2.setColor(base);
                     g2.fillRoundRect(0, 0, getWidth(), getHeight(), 50, 50);
                     g2.dispose();
                 }
             };
+
             painelConteudo.setOpaque(false);
-            painelConteudo.setLayout(new FlowLayout(FlowLayout.CENTER, 10, 10));
-            painelConteudo.setPreferredSize(new Dimension(500, 50)); // Tamanho fixo do retângulo
+            painelConteudo.setLayout(new FlowLayout(FlowLayout.LEFT, 10, 10));
+            painelConteudo.setPreferredSize(new Dimension(500, 50));
             painelConteudo.setMaximumSize(new Dimension(500, 50));
 
-            JLabel lblNome = new JLabel(nome);
+            
+
+            // CheckBox para despesa fixa
+            if (chkPaga != null) {
+                painelConteudo.add(chkPaga);
+
+                chkPaga.addActionListener(e -> {
+                    Janela janela = (Janela) SwingUtilities.getWindowAncestor(ItemDespesa.this);
+                    boolean novoEstado = chkPaga.isSelected();
+                    janela.controller.marcarDespesaComoPaga(idDespesa, novoEstado);
+                    repaint(); // apenas repinta a cor, não desativa nada
+                    SwingUtilities.invokeLater(() -> janela.atualizarVista());
+                });
+            }
+
+
+            // Labels
+            lblNome = new JLabel(nome);
             lblNome.setFont(new Font("Arial", Font.BOLD, 20));
             lblNome.setForeground(Color.WHITE);
 
-            JLabel lblValor = new JLabel(valor);
+            lblValor = new JLabel(valor);
             lblValor.setFont(new Font("Arial", Font.PLAIN, 20));
             lblValor.setForeground(Color.WHITE);
 
             painelConteudo.add(lblNome);
             painelConteudo.add(lblValor);
 
+            // Botões
             JButton btnEditar = new BotaoRedondoColorido("✏️", new Color(82, 113, 255));
             JButton btnRemover = new BotaoRedondoColorido("🗑️", new Color(255, 82, 82));
 
             btnEditar.addActionListener(e -> {
                 String novoValorStr = JOptionPane.showInputDialog(this, "Novo valor para " + nome + ":");
                 if (novoValorStr == null || novoValorStr.trim().isEmpty()) return;
-
                 try {
                     double novoValor = Double.parseDouble(novoValorStr);
-                    ((Janela) SwingUtilities.getWindowAncestor(this)).controller.editarDespesa(idDespesa, novoValor);
-                    ((Janela) SwingUtilities.getWindowAncestor(this)).atualizarVista();
+                    Janela janela = (Janela) SwingUtilities.getWindowAncestor(this);
+                    Despesa despesaAtual = janela.controller.getRegistoAtual().getDespesas().get(idDespesa);
+
+                    if (despesaAtual instanceof DespesaFixa) {
+                        janela.controller.editarDespesaFixaFuturas(idDespesa, novoValor);
+                    } else {
+                        janela.controller.editarDespesa(idDespesa, novoValor);
+                    }
+                    janela.atualizarVista();
                 } catch (NumberFormatException ex) {
                     JOptionPane.showMessageDialog(this, "Valor inválido!", "Erro", JOptionPane.ERROR_MESSAGE);
                 }
@@ -663,26 +770,44 @@ public class Janela extends JFrame {
                         "Confirmação",
                         JOptionPane.YES_NO_OPTION);
                 if (opcao == JOptionPane.YES_OPTION) {
-                    ((Janela) SwingUtilities.getWindowAncestor(this)).controller.removerDespesa(idDespesa);
-                    ((Janela) SwingUtilities.getWindowAncestor(this)).atualizarVista();
+                    Janela janela = (Janela) SwingUtilities.getWindowAncestor(this);
+                    Despesa despesaAtual = janela.controller.getRegistoAtual().getDespesas().get(idDespesa);
+
+                    // proteção contra null (evita crash)
+                    if (despesaAtual == null) {
+                        // tenta encontrar pela lista de despesas (fallback)
+                        for (Despesa d : janela.controller.getRegistoAtual().getDespesas().values()) {
+                            if (d.getNome().equalsIgnoreCase(nome) && d instanceof DespesaFixa) {
+                                despesaAtual = d;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (despesaAtual == null) {
+                        // informa o utilizador e aborta
+                        JOptionPane.showMessageDialog(this, "Despesa não encontrada (id " + idDespesa + ").", "Erro", JOptionPane.ERROR_MESSAGE);
+                        return;
+                    }
+
+                    if (despesaAtual instanceof DespesaFixa) {
+                        janela.controller.removerDespesaFixaFuturas(despesaAtual.getIdDespesa());
+                    } else {
+                        janela.controller.removerDespesa(despesaAtual.getIdDespesa());
+                    }
+                    janela.atualizarVista();
                 }
             });
-
 
 
             add(painelConteudo);
             add(btnEditar);
             add(btnRemover);
         }
+        
 
-        // Gera uma cor baseada no hash do nome (consistente para cada nome)
-        private Color gerarCorParaNome(String nome) {
-            int hash = nome.hashCode();
-            int r = 100 + Math.abs(hash) % 100;
-            int g = 100 + Math.abs(hash / 100) % 100;
-            int b = 100 + Math.abs(hash / 10000) % 100;
-            return new Color(r, g, b);
-        }
+    }
+
 
         // Botão colorido redondo
         private static class BotaoRedondoColorido extends JButton {
@@ -714,7 +839,6 @@ public class Janela extends JFrame {
             @Override
             protected void paintBorder(Graphics g) {}
         }
-    }
 
     private static class ScrollBarCinzaArredondada extends BasicScrollBarUI {
         private final int arc = 20;
@@ -763,6 +887,7 @@ public class Janela extends JFrame {
             return btn;
         }
     }
-
-
 }
+
+
+
