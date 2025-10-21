@@ -1,2 +1,2 @@
-# <img src= "https://github.com/icsousa/uminho/assets/115634463/1791e07d-0dab-4918-a7ce-0d8bb1683fcd" width="55px" /> MoneyCount
+# <img src="https://github.com/user-attachments/assets/857e686c-be4d-4822-b07c-8fb8ab6197aa" width="20px" /> MoneyCount
 **🚧 Projeto por acabar! 🚧**
