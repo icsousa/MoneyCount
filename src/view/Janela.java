@@ -9,6 +9,8 @@ import javax.swing.GroupLayout.Group;
 
 import java.awt.*;
 import java.awt.geom.Path2D;
+
+import javax.swing.plaf.FontUIResource;
 import javax.swing.plaf.basic.BasicScrollBarUI;
 import javax.swing.table.DefaultTableModel;
 import javafx.application.Platform;
@@ -185,6 +187,18 @@ public class Janela extends JFrame {
 
     }
 
+    private static void setUIFont(FontUIResource f) {
+        java.util.Enumeration<Object> keys = UIManager.getDefaults().keys();
+        while (keys.hasMoreElements()) {
+            Object key = keys.nextElement();
+            Object value = UIManager.get(key);
+            if (value instanceof FontUIResource) {
+                UIManager.put(key, f);
+            }
+        }
+    }
+
+
 
 
     public Janela(MoneyCountController controller) {
@@ -194,6 +208,8 @@ public class Janela extends JFrame {
         lblMontante = new JLabel();
         lblSaldo = new JLabel();
         lblDespesas = new JLabel();
+
+        setUIFont(new FontUIResource("Arial", Font.PLAIN, 14));
 
         tabelaDespesas = new JTable(new DefaultTableModel(new Object[]{"Nome", "Valor"}, 0));
         tabelaDespesas.setFillsViewportHeight(true);
