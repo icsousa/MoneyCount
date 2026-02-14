@@ -215,7 +215,7 @@ public class Janela extends JFrame {
         tabelaDespesas.setFillsViewportHeight(true);
         tabelaDespesas.setPreferredScrollableViewportSize(new Dimension(300, 150));
 
-        setTitle("MoneyↃount");
+        setTitle("MoneyCount");
 
         Toolkit kit = Toolkit.getDefaultToolkit();  
         Dimension tamTela = kit.getScreenSize();  
