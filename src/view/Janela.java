@@ -484,7 +484,7 @@ public class Janela extends JFrame {
     }
 
     private static class PainelComCantosInferioresArredondados extends JPanel {
-        private final int arc = 30;
+        private final int arc = 0;
 
         public PainelComCantosInferioresArredondados() {
             setOpaque(false);
