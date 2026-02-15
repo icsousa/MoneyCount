@@ -9,6 +9,7 @@ import javax.swing.GroupLayout.Group;
 
 import java.awt.*;
 import java.awt.geom.Path2D;
+import java.awt.event.ActionEvent;
 
 import javax.swing.plaf.FontUIResource;
 import javax.swing.plaf.basic.BasicScrollBarUI;
@@ -225,11 +226,11 @@ public class Janela extends JFrame {
         int alt = tamTela.height;
 
         // Janela maximizada mas com barra de título visível
-        setSize(larg,alt);
+        setSize(larg, alt);
         setResizable(false);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
-
         inicializarComponentes();
+        configurarHotkeys();
         setVisible(true);
     }
 
@@ -264,11 +265,11 @@ public class Janela extends JFrame {
         });
     
         // Painel com margens para os botões (60px do centro)
-        JPanel painelEsquerda = new JPanel(new FlowLayout(FlowLayout.LEFT, 400, 5));
+        JPanel painelEsquerda = new JPanel(new FlowLayout(FlowLayout.LEFT, 20, 5));
         painelEsquerda.setOpaque(false);
         painelEsquerda.add(btnAnterior);
 
-        JPanel painelDireita = new JPanel(new FlowLayout(FlowLayout.RIGHT, 400, 5));
+        JPanel painelDireita = new JPanel(new FlowLayout(FlowLayout.RIGHT, 20, 5));
         painelDireita.setOpaque(false);
         painelDireita.add(btnSeguinte);
 
@@ -902,6 +903,34 @@ public class Janela extends JFrame {
             btn.setMaximumSize(new Dimension(0, 0));
             return btn;
         }
+    }
+
+    private void configurarHotkeys() {
+        JRootPane rootPane = this.getRootPane();
+        InputMap inputMap = rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
+        ActionMap actionMap = rootPane.getActionMap();
+
+            // Atalho: Seta para a Direita (Avançar)
+        inputMap.put(KeyStroke.getKeyStroke("RIGHT"), "avancarMes");
+        actionMap.put("avancarMes", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                // Lógica para avançar o mês no seu controller
+                controller.avancarMes(); 
+                atualizarVista(); // Método que você usa para dar refresh nos labels/tabela
+            }
+        });
+
+        // Atalho: Seta para a Esquerda (Recuar)
+        inputMap.put(KeyStroke.getKeyStroke("LEFT"), "retrocederMes");
+        actionMap.put("retrocederMes", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                // Lógica para recuar o mês no seu controller
+                controller.retrocederMes();
+                atualizarVista();
+            }
+        });
     }
 }
 
