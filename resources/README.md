@@ -1,6 +1,6 @@
 # Resources & Libraries
 
-This folder is used to store external dependencies required to run the application, specifically the **JavaFX SDK**.
+This directory serves as the central repository for external dependencies and static assets required to build and run the application.
 
 ## ⚠️ Important Note regarding JavaFX
 
@@ -11,3 +11,4 @@ Since this project does not use a build tool like Maven or Gradle, the JavaFX SD
 * **If you are on Windows:** You must replace the content with the **Windows** version of JavaFX SDK.
 
 🔗 [Download JavaFX SDK (Gluon)](https://gluonhq.com/products/javafx/)
+This directory serves as the central repository for external dependencies and static assets required to build and run the application.
