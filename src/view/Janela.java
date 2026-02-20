@@ -22,6 +22,7 @@ import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import java.util.List;
 import java.util.Map;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.time.format.DateTimeFormatter;
 import java.time.format.TextStyle;
@@ -140,7 +141,7 @@ public class Janela extends JFrame {
         gbcList.anchor = GridBagConstraints.NORTH;
         gbcList.insets = new Insets(2, 2, 2, 2); // espaçamento entre itens
 
-        for (Despesa despesa : controller.getDespesasMesAtual()) {
+        for (Despesa despesa : getDespesasOrdenadas()) {
             int idDespesa = despesa.getIdDespesa();
             String nome = despesa.getNome();
             String valor = String.format("%.2f €", despesa.getMontante());
@@ -168,7 +169,7 @@ public class Janela extends JFrame {
         DefaultTableModel model = (DefaultTableModel) tabelaDespesas.getModel();
         model.setRowCount(0); // Limpa todas as linhas
 
-        for (Despesa despesa : controller.getDespesasMesAtual()) {
+        for (Despesa despesa : getDespesasOrdenadas()) {
             model.addRow(new Object[]{
                 despesa.getNome(),
                 String.format("%.2f €", despesa.getMontante()),
@@ -197,6 +198,24 @@ public class Janela extends JFrame {
                 UIManager.put(key, f);
             }
         }
+    }
+
+    private List<Despesa> getDespesasOrdenadas() {
+        // Cria uma cópia da lista para não modificar a original acidentalmente
+        List<Despesa> despesas = new ArrayList<>(controller.getDespesasMesAtual());
+        
+        despesas.sort((d1, d2) -> {
+            boolean d1Fixa = d1 instanceof DespesaFixa;
+            boolean d2Fixa = d2 instanceof DespesaFixa;
+            
+            // 1º Critério: Despesas fixas primeiro
+            if (d1Fixa && !d2Fixa) return -1; // d1 vem antes
+            if (!d1Fixa && d2Fixa) return 1;  // d2 vem antes
+            
+            return Integer.compare(d2.getIdDespesa(), d1.getIdDespesa());
+        });
+        
+        return despesas;
     }
 
 
