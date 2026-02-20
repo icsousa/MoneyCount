@@ -68,7 +68,7 @@ public class Janela extends JFrame {
 
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
         splitPane.setDividerLocation(Toolkit.getDefaultToolkit().getScreenSize().width / 2);
-        splitPane.setEnabled(false); // Impede o utilizador de arrastar
+        splitPane.setEnabled(false);
         splitPane.setDividerSize(0); 
 
         splitPane.setLeftComponent(criarPainelEsquerdo());
@@ -76,10 +76,6 @@ public class Janela extends JFrame {
 
         add(splitPane, BorderLayout.CENTER);
     }
-
-    // =========================================================================
-    // MÉTODOS DE CRIAÇÃO DE PAINÉIS (UI)
-    // =========================================================================
 
     private JPanel criarPainelTopo() {
         JPanel painelMes = new PainelComCantosInferioresArredondados();
@@ -122,7 +118,6 @@ public class Janela extends JFrame {
         painelEsquerdo.add(fxPanel);
         atualizarGrafico(fxPanel);
 
-        // Painel Resumo
         JPanel painelResumo = new JPanel(new GridBagLayout());
         painelResumo.setBackground(Color.WHITE);
         painelResumo.setOpaque(true);
@@ -184,10 +179,6 @@ public class Janela extends JFrame {
         return painelDireito;
     }
 
-    // =========================================================================
-    // LÓGICA DE ATUALIZAÇÃO E UTILITÁRIOS
-    // =========================================================================
-
     public void atualizarVista() {
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.of("pt", "PT"));
         lblData.setText(controller.getDataModelo().format(formatter));
@@ -227,7 +218,7 @@ public class Janela extends JFrame {
 
     private List<Despesa> getDespesasOrdenadas() {
         List<Despesa> originais = controller.getDespesasMesAtual();
-        if (originais == null) return new ArrayList<>(); // Proteção contra null
+        if (originais == null) return new ArrayList<>();
         
         List<Despesa> despesas = new ArrayList<>(originais);
         despesas.sort((d1, d2) -> {
@@ -242,22 +233,16 @@ public class Janela extends JFrame {
         return despesas;
     }
 
-    // Método auxiliar para criar janelas de input personalizadas, modernas e sem barra superior
     private String mostrarDialogoInputSemBorda(String mensagem) {
         JDialog dialog = new JDialog(this, "", Dialog.ModalityType.APPLICATION_MODAL);
         dialog.setUndecorated(true);
-        
+
         try {
-            // Tenta tornar a janela do sistema transparente
             dialog.setBackground(new Color(0, 0, 0, 0)); 
         } catch (Exception e) {
-            // Ignora se o sistema operativo não suportar
         }
 
-        // Usa o nosso novo painel que projeta a sombra
         PainelSombra painelSombra = new PainelSombra();
-
-        // O conteúdo interno agora é transparente (setOpaque(false)) para vermos o fundo desenhado pela sombra
         JPanel painelConteudo = new JPanel(new BorderLayout(10, 15));
         painelConteudo.setOpaque(false); 
         painelConteudo.setBorder(BorderFactory.createEmptyBorder(15, 20, 15, 20));
@@ -333,7 +318,7 @@ public class Janela extends JFrame {
         dialog.setUndecorated(true);
 
         try {
-            dialog.setBackground(new Color(0, 0, 0, 0)); // Fundo transparente
+            dialog.setBackground(new Color(0, 0, 0, 0));
         } catch (Exception e) {}
 
         PainelSombra painelSombra = new PainelSombra();
@@ -398,8 +383,8 @@ public class Janela extends JFrame {
     }
 
     private void abrirDialogoNovaDespesa(boolean eFixa) {
-        String tipo = eFixa ? "fixa" : "";
-        String nome = mostrarDialogoInputSemBorda("Nome da despesa " + tipo + ":");
+        String tipo = eFixa ? " fixa" : "";
+        String nome = mostrarDialogoInputSemBorda("Nome da despesa" + tipo + ":");
         if (nome == null || nome.trim().isEmpty()) return;
 
         String valorStr = mostrarDialogoInputSemBorda("Valor da despesa (€):");
@@ -493,10 +478,6 @@ public class Janela extends JFrame {
             if (value instanceof FontUIResource) UIManager.put(key, f);
         }
     }
-
-    // =========================================================================
-    // CLASSES INTERNAS (COMPONENTES VISUAIS CUSTOMIZADOS)
-    // =========================================================================
 
     private static class BotaoRedondo extends JButton {
         public BotaoRedondo(String texto) {
@@ -738,34 +719,25 @@ public class Janela extends JFrame {
         @Override protected JButton createIncreaseButton(int o) { JButton b=new JButton(); b.setPreferredSize(new Dimension(0,0)); return b; }
     }
 
-    // Painel personalizado que desenha uma sombra esfumada à volta do fundo branco
     private static class PainelSombra extends JPanel {
-        private final int tamanhoSombra = 5; // Espessura da sombra
-
+        private final int tamanhoSombra = 5;
         public PainelSombra() {
-            setOpaque(false); // O painel base tem de ser transparente
+            setOpaque(false);
             setLayout(new BorderLayout());
-            // Margem para a sombra não ser cortada pelos limites da janela
             setBorder(BorderFactory.createEmptyBorder(tamanhoSombra, tamanhoSombra, tamanhoSombra, tamanhoSombra));
         }
-
         @Override
         protected void paintComponent(Graphics g) {
             super.paintComponent(g);
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
-            // 1. Desenha várias camadas sobrepostas para criar o "blur" da sombra
             for (int i = 0; i < tamanhoSombra; i++) {
                 float opacidade = 0.05f * (1.0f - ((float) i / tamanhoSombra));
-                g2.setColor(new Color(0, 0, 0, opacidade)); // Preto com transparência
+                g2.setColor(new Color(0, 0, 0, opacidade)); 
                 g2.fillRoundRect(i, i, getWidth() - i * 2, getHeight() - i * 2, 12, 12);
             }
-
-            // 2. Desenha o fundo branco principal por cima da sombra
             g2.setColor(Color.WHITE);
             g2.fillRoundRect(tamanhoSombra, tamanhoSombra, getWidth() - tamanhoSombra * 2, getHeight() - tamanhoSombra * 2, 8, 8);
-            
             g2.dispose();
         }
     }
