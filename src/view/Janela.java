@@ -5,45 +5,419 @@ import model.Despesa;
 import model.DespesaFixa;
 
 import javax.swing.*;
-import javax.swing.GroupLayout.Group;
-
-import java.awt.*;
-import java.awt.geom.Path2D;
-import java.awt.event.ActionEvent;
-
 import javax.swing.plaf.FontUIResource;
 import javax.swing.plaf.basic.BasicScrollBarUI;
-import javax.swing.table.DefaultTableModel;
 import javafx.application.Platform;
 import javafx.embed.swing.JFXPanel;
 import javafx.scene.Scene;
 import javafx.scene.chart.PieChart;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.scene.control.Tooltip;
+
+import java.awt.*;
+import java.awt.geom.Path2D;
+import java.awt.event.ActionEvent;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.time.format.DateTimeFormatter;
-import java.time.format.TextStyle;
 import java.util.Locale;
-import javafx.scene.control.Tooltip;
-
 
 public class Janela extends JFrame {
     private MoneyCountController controller;
-    private JTable tabelaDespesas;
-    private JLabel lblMontante, lblSaldo, lblDespesas;
     private JLabel lblData;
     private JPanel listaDespesas;
     private CaixaTituloValor caixaSalario, caixaSaldo, caixaDespesas, caixaPoupanca;
     private JFXPanel fxPanel;
     private final int alturaGrafico = 300;
 
+    public Janela(MoneyCountController controller) {
+        this.controller = controller;
+        setUIFont(new FontUIResource("Arial", Font.PLAIN, 14));
+        
+        configurarJanelaBase();
+        inicializarComponentes();
+        configurarHotkeys();
+        
+        setVisible(true);
+    }
+
+    private void configurarJanelaBase() {
+        setTitle("MoneyCount");
+        try {
+            String caminhoIcone = "resources/LOGO.png"; 
+            Image icon = new ImageIcon(caminhoIcone).getImage();
+            if (icon != null) {
+                setIconImage(icon);
+            }
+        } catch (Exception e) {
+            System.out.println("Erro ao carregar o ícone: " + e.getMessage());
+        }
+        Toolkit kit = Toolkit.getDefaultToolkit();  
+        Dimension tamTela = kit.getScreenSize();  
+        setSize(tamTela.width, tamTela.height);
+        setResizable(false);
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        setLayout(new BorderLayout());
+    }
+
+    private void inicializarComponentes() {
+        add(criarPainelTopo(), BorderLayout.NORTH);
+
+        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+        splitPane.setDividerLocation(Toolkit.getDefaultToolkit().getScreenSize().width / 2);
+        splitPane.setEnabled(false); // Impede o utilizador de arrastar
+        splitPane.setDividerSize(0); 
+
+        splitPane.setLeftComponent(criarPainelEsquerdo());
+        splitPane.setRightComponent(criarPainelDireito());
+
+        add(splitPane, BorderLayout.CENTER);
+    }
+
+    // =========================================================================
+    // MÉTODOS DE CRIAÇÃO DE PAINÉIS (UI)
+    // =========================================================================
+
+    private JPanel criarPainelTopo() {
+        JPanel painelMes = new PainelComCantosInferioresArredondados();
+        painelMes.setLayout(new BorderLayout());
+        painelMes.setBackground(new Color(0x54, 0x54, 0x54));
+
+        BotaoRedondo btnAnterior = new BotaoRedondo("←");
+        BotaoRedondo btnSeguinte = new BotaoRedondo("→");
+
+        btnSeguinte.addActionListener(e -> { controller.avancarMes(); atualizarVista(); });
+        btnAnterior.addActionListener(e -> { controller.retrocederMes(); atualizarVista(); });
+    
+        JPanel painelEsquerda = new JPanel(new FlowLayout(FlowLayout.LEFT, 20, 5));
+        painelEsquerda.setOpaque(false);
+        painelEsquerda.add(btnAnterior);
+
+        JPanel painelDireita = new JPanel(new FlowLayout(FlowLayout.RIGHT, 20, 5));
+        painelDireita.setOpaque(false);
+        painelDireita.add(btnSeguinte);
+
+        lblData = new JLabel(controller.getDataModeloString(), SwingConstants.CENTER);
+        lblData.setForeground(Color.WHITE);
+        lblData.setFont(new Font("Arial", Font.BOLD, 22));
+
+        painelMes.add(painelEsquerda, BorderLayout.WEST);
+        painelMes.add(lblData, BorderLayout.CENTER);
+        painelMes.add(painelDireita, BorderLayout.EAST);
+
+        return painelMes;
+    }
+
+    private Component criarPainelEsquerdo() {
+        Box painelEsquerdo = Box.createVerticalBox();
+        painelEsquerdo.setBackground(Color.WHITE);
+        painelEsquerdo.setOpaque(true);
+
+        fxPanel = new JFXPanel();
+        fxPanel.setPreferredSize(new Dimension(600, alturaGrafico));
+        fxPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 600));
+        painelEsquerdo.add(fxPanel);
+        atualizarGrafico(fxPanel);
+
+        // Painel Resumo
+        JPanel painelResumo = new JPanel(new GridBagLayout());
+        painelResumo.setBackground(Color.WHITE);
+        painelResumo.setOpaque(true);
+        painelResumo.setMaximumSize(new Dimension(Integer.MAX_VALUE, 300));
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(10, 20, 10, 20);
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+
+        caixaSalario = new CaixaTituloValor("Salário", String.format("%.2f €", controller.getRendimentoAtual()));
+        caixaSaldo = new CaixaTituloValor("Saldo Disp.", String.format("%.2f €", controller.getSaldoAtual()));
+        caixaDespesas = new CaixaTituloValor("Despesas", String.format("%.2f €", controller.getTotalDespesas()));
+        caixaPoupanca = new CaixaTituloValor("Poupança", String.format("%.2f €", controller.getPoupancaAcumulada()));
+
+        gbc.gridx = 0; gbc.gridy = 0; painelResumo.add(caixaSalario, gbc);
+        gbc.gridx = 1; gbc.gridy = 0; painelResumo.add(caixaDespesas, gbc);
+        gbc.gridx = 0; gbc.gridy = 1; painelResumo.add(caixaPoupanca, gbc);
+        gbc.gridx = 1; gbc.gridy = 1; painelResumo.add(caixaSaldo, gbc);
+
+        painelEsquerdo.add(Box.createVerticalStrut(10));
+        painelEsquerdo.add(painelResumo);
+
+        return painelEsquerdo;
+    }
+
+    private JPanel criarPainelDireito() {
+        JPanel painelDireito = new JPanel(new BorderLayout());
+        painelDireito.setBackground(new Color(238, 238, 238));
+        painelDireito.setOpaque(true);
+        painelDireito.setPreferredSize(new Dimension(400, Integer.MAX_VALUE));
+
+        JPanel painelTituloComBotoes = new JPanel(new FlowLayout(FlowLayout.LEFT, 20, 10));
+        painelTituloComBotoes.setOpaque(false);
+
+        JButton btnDespesa = new BotaoEstiloTitulo("+ Despesa", new Color(174, 239, 164));
+        JButton btnDespesaFixa = new BotaoEstiloTitulo("+ Despesa Fixa", new Color(220, 167, 235));
+
+        btnDespesa.addActionListener(e -> abrirDialogoNovaDespesa(false));
+        btnDespesaFixa.addActionListener(e -> abrirDialogoNovaDespesa(true));
+
+        painelTituloComBotoes.add(btnDespesa);
+        painelTituloComBotoes.add(btnDespesaFixa);
+        painelDireito.add(painelTituloComBotoes, BorderLayout.NORTH);
+
+        listaDespesas = new JPanel(new GridBagLayout());
+        listaDespesas.setBackground(new Color(238, 238, 238));
+        listaDespesas.setOpaque(true);
+
+        preencherListaDespesas();
+
+        JScrollPane scrollDespesas = new JScrollPane(listaDespesas);
+        scrollDespesas.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
+        scrollDespesas.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        scrollDespesas.setBorder(BorderFactory.createEmptyBorder(0, 0, 50, 0));
+        scrollDespesas.getVerticalScrollBar().setUI(new ScrollBarCinzaArredondada());
+        
+        painelDireito.add(scrollDespesas, BorderLayout.CENTER);
+
+        return painelDireito;
+    }
+
+    // =========================================================================
+    // LÓGICA DE ATUALIZAÇÃO E UTILITÁRIOS
+    // =========================================================================
+
+    public void atualizarVista() {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.of("pt", "PT"));
+        lblData.setText(controller.getDataModelo().format(formatter));
+
+        caixaSalario.setValor(String.format("%.2f €", controller.getRendimentoAtual()));
+        caixaSaldo.setValor(String.format("%.2f €", controller.getSaldoAtual()));
+        caixaDespesas.setValor(String.format("%.2f €", controller.getTotalDespesas()));
+        caixaPoupanca.setValor(String.format("%.2f €", controller.getPoupancaAcumulada()));
+
+        preencherListaDespesas();
+        atualizarGrafico(fxPanel);
+    }
+
+    private void preencherListaDespesas() {
+        listaDespesas.removeAll();
+        GridBagConstraints gbcList = new GridBagConstraints();
+        gbcList.gridx = 0; gbcList.gridy = 0;
+        gbcList.fill = GridBagConstraints.HORIZONTAL;
+        gbcList.anchor = GridBagConstraints.NORTH;
+        gbcList.insets = new Insets(2, 2, 2, 2);
+
+        for (Despesa despesa : getDespesasOrdenadas()) {
+            boolean fixa = despesa instanceof DespesaFixa;
+            boolean paga = fixa && ((DespesaFixa) despesa).isPago();
+            listaDespesas.add(new ItemDespesa(despesa.getIdDespesa(), despesa.getNome(), 
+                              String.format("%.2f €", despesa.getMontante()), fixa, paga), gbcList);
+            gbcList.gridy++;
+        }
+
+        gbcList.weighty = 1.0;
+        listaDespesas.add(Box.createVerticalGlue(), gbcList);
+
+        listaDespesas.revalidate();
+        listaDespesas.repaint();
+        SwingUtilities.invokeLater(() -> listaDespesas.updateUI());
+    }
+
+    private List<Despesa> getDespesasOrdenadas() {
+        List<Despesa> originais = controller.getDespesasMesAtual();
+        if (originais == null) return new ArrayList<>(); // Proteção contra null
+        
+        List<Despesa> despesas = new ArrayList<>(originais);
+        despesas.sort((d1, d2) -> {
+            boolean d1Fixa = d1 instanceof DespesaFixa;
+            boolean d2Fixa = d2 instanceof DespesaFixa;
+            
+            if (d1Fixa && !d2Fixa) return -1;
+            if (!d1Fixa && d2Fixa) return 1;
+            
+            return Integer.compare(d2.getIdDespesa(), d1.getIdDespesa());
+        });
+        return despesas;
+    }
+
+    // Método auxiliar para criar janelas de input personalizadas, modernas e sem barra superior
+    private String mostrarDialogoInputSemBorda(String mensagem) {
+        JDialog dialog = new JDialog(this, "", Dialog.ModalityType.APPLICATION_MODAL);
+        dialog.setUndecorated(true);
+        
+        try {
+            // Tenta tornar a janela do sistema transparente
+            dialog.setBackground(new Color(0, 0, 0, 0)); 
+        } catch (Exception e) {
+            // Ignora se o sistema operativo não suportar
+        }
+
+        // Usa o nosso novo painel que projeta a sombra
+        PainelSombra painelSombra = new PainelSombra();
+
+        // O conteúdo interno agora é transparente (setOpaque(false)) para vermos o fundo desenhado pela sombra
+        JPanel painelConteudo = new JPanel(new BorderLayout(10, 15));
+        painelConteudo.setOpaque(false); 
+        painelConteudo.setBorder(BorderFactory.createEmptyBorder(15, 20, 15, 20));
+
+        JLabel lblMensagem = new JLabel(mensagem);
+        lblMensagem.setFont(new Font("Arial", Font.BOLD, 16));
+
+        JTextField campoTexto = new JTextField(15);
+        campoTexto.setFont(new Font("Arial", Font.PLAIN, 16));
+        
+        JPanel painelCentro = new JPanel(new BorderLayout(5, 10));
+        painelCentro.setOpaque(false);
+        painelCentro.add(lblMensagem, BorderLayout.NORTH);
+        painelCentro.add(campoTexto, BorderLayout.CENTER);
+
+        JButton btnOk = new JButton("OK");
+        JButton btnCancelar = new JButton("Cancelar");
+        
+        btnOk.setBackground(new Color(82, 113, 255));
+        btnOk.setForeground(Color.WHITE);
+        btnOk.setFocusPainted(false);
+        
+        btnCancelar.setBackground(new Color(220, 220, 220));
+        btnCancelar.setFocusPainted(false);
+
+        final String[] resultado = {null};
+
+        btnOk.addActionListener(e -> {
+            resultado[0] = campoTexto.getText();
+            dialog.dispose();
+        });
+
+        btnCancelar.addActionListener(e -> {
+            resultado[0] = null;
+            dialog.dispose();
+        });
+
+        campoTexto.addActionListener(e -> btnOk.doClick());
+
+        dialog.getRootPane().setDefaultButton(btnOk);
+        dialog.getRootPane().registerKeyboardAction(
+            e -> btnCancelar.doClick(),
+            KeyStroke.getKeyStroke("ESCAPE"), 
+            JComponent.WHEN_IN_FOCUSED_WINDOW
+        );
+
+        JPanel painelBotoes = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        painelBotoes.setOpaque(false);
+        painelBotoes.add(btnCancelar);
+        painelBotoes.add(btnOk);
+
+        painelConteudo.add(painelCentro, BorderLayout.CENTER);
+        painelConteudo.add(painelBotoes, BorderLayout.SOUTH);
+
+        painelSombra.add(painelConteudo, BorderLayout.CENTER);
+
+        dialog.add(painelSombra);
+        dialog.pack();
+        dialog.setLocationRelativeTo(this);
+
+        dialog.addWindowFocusListener(new java.awt.event.WindowAdapter() {
+            public void windowGainedFocus(java.awt.event.WindowEvent e) {
+                campoTexto.requestFocusInWindow();
+            }
+        });
+
+        dialog.setVisible(true);
+        return resultado[0];
+    }
+
+    public boolean mostrarDialogoConfirmacaoSemBorda(String mensagem) {
+        JDialog dialog = new JDialog(this, "", Dialog.ModalityType.APPLICATION_MODAL);
+        dialog.setUndecorated(true);
+
+        try {
+            dialog.setBackground(new Color(0, 0, 0, 0)); // Fundo transparente
+        } catch (Exception e) {}
+
+        PainelSombra painelSombra = new PainelSombra();
+
+        JPanel painelConteudo = new JPanel(new BorderLayout(10, 20));
+        painelConteudo.setOpaque(false);
+        painelConteudo.setBorder(BorderFactory.createEmptyBorder(15, 20, 15, 20));
+
+        JLabel lblMensagem = new JLabel(mensagem);
+        lblMensagem.setFont(new Font("Arial", Font.BOLD, 16));
+        lblMensagem.setHorizontalAlignment(SwingConstants.CENTER);
+
+        JPanel painelCentro = new JPanel(new BorderLayout());
+        painelCentro.setOpaque(false);
+        painelCentro.add(lblMensagem, BorderLayout.CENTER);
+
+        JButton btnRemover = new JButton("Remover");
+        JButton btnCancelar = new JButton("Cancelar");
+        
+        btnRemover.setBackground(new Color(255, 82, 82)); 
+        btnRemover.setForeground(Color.WHITE);
+        btnRemover.setFocusPainted(false);
+        
+        btnCancelar.setBackground(new Color(220, 220, 220));
+        btnCancelar.setFocusPainted(false);
+
+        final boolean[] resultado = {false};
+
+        btnRemover.addActionListener(e -> {
+            resultado[0] = true;
+            dialog.dispose();
+        });
+
+        btnCancelar.addActionListener(e -> {
+            resultado[0] = false;
+            dialog.dispose();
+        });
+
+        dialog.getRootPane().setDefaultButton(btnRemover);
+        dialog.getRootPane().registerKeyboardAction(
+            e -> btnCancelar.doClick(),
+            KeyStroke.getKeyStroke("ESCAPE"), 
+            JComponent.WHEN_IN_FOCUSED_WINDOW
+        );
+
+        JPanel painelBotoes = new JPanel(new FlowLayout(FlowLayout.CENTER, 15, 0));
+        painelBotoes.setOpaque(false);
+        painelBotoes.add(btnCancelar);
+        painelBotoes.add(btnRemover);
+
+        painelConteudo.add(painelCentro, BorderLayout.CENTER);
+        painelConteudo.add(painelBotoes, BorderLayout.SOUTH);
+
+        painelSombra.add(painelConteudo, BorderLayout.CENTER);
+
+        dialog.add(painelSombra);
+        dialog.pack();
+        dialog.setLocationRelativeTo(this);
+        
+        dialog.setVisible(true);
+        return resultado[0];
+    }
+
+    private void abrirDialogoNovaDespesa(boolean eFixa) {
+        String tipo = eFixa ? "fixa" : "";
+        String nome = mostrarDialogoInputSemBorda("Nome da despesa " + tipo + ":");
+        if (nome == null || nome.trim().isEmpty()) return;
+
+        String valorStr = mostrarDialogoInputSemBorda("Valor da despesa (€):");
+        if (valorStr == null || valorStr.trim().isEmpty()) return;
+
+        try {
+            double valor = Double.parseDouble(valorStr.replace(",", "."));
+            controller.adicionarDespesa(nome, valor, eFixa);
+            atualizarVista();
+        } catch (NumberFormatException ex) {
+            JOptionPane.showMessageDialog(this, "Valor inválido!", "Erro", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
     private void atualizarGrafico(JFXPanel fxPanel) {
         List<Despesa> despesas = controller.getDespesasMesAtual();
+        if (despesas == null) return;
 
-        // Agrupar por nome e somar valores
         Map<String, Double> somaPorNome = new HashMap<>();
         Map<String, java.awt.Color> coresPorNome = new HashMap<>();
         for (Despesa d : despesas) {
@@ -58,135 +432,57 @@ public class Janela extends JFrame {
             PieChart chart = new PieChart(pieChartData);
             chart.setLegendVisible(false);
             chart.setLabelsVisible(true);
-            chart.setPrefHeight(400);
-            chart.setPrefWidth(600);
+            chart.setPrefSize(600, 400);
             chart.setStyle("-fx-background-color: white;");
 
             Scene scene = new Scene(chart);
-            scene.setFill(javafx.scene.paint.Color.WHITE); // <- FUNDO BRANCO
+            scene.setFill(javafx.scene.paint.Color.WHITE);
             fxPanel.setScene(scene);
 
-            // Espera um instante para garantir que os nós do gráfico existem
-            // depois de fxPanel.setScene(new Scene(chart));
             Platform.runLater(() -> {
                 double total = somaPorNome.values().stream().mapToDouble(Double::doubleValue).sum();
-
                 for (PieChart.Data data : chart.getData()) {
-                    // captura valores que usaremos no listener
                     final String nome = data.getName();
                     final double valor = data.getPieValue();
                     final double percentagem = total == 0 ? 0 : (valor / total) * 100.0;
-
-                    // cor (aplica quando o node ficar disponível)
                     final java.awt.Color awtColor = coresPorNome.get(nome);
-                    final String rgb = awtColor == null ? null :
-                            String.format("%d, %d, %d",
-                                    awtColor.getRed(), awtColor.getGreen(), awtColor.getBlue());
+                    final String rgb = awtColor == null ? null : String.format("%d, %d, %d", awtColor.getRed(), awtColor.getGreen(), awtColor.getBlue());
 
-                    // listener que instala tooltip e aplica cor quando node existir
                     data.nodeProperty().addListener((obs, oldNode, newNode) -> {
                         if (newNode != null) {
-                            // aplica cor se disponível
-                            if (rgb != null) {
-                                newNode.setStyle("-fx-pie-color: rgb(" + rgb + ");");
-                            }
-                            // instala tooltip com nome + valor + percentagem
-                            Tooltip tip = new Tooltip(String.format("%s: %.2f € (%.1f%%)", nome, valor, percentagem));
-                            Tooltip.install(newNode, tip);
+                            if (rgb != null) newNode.setStyle("-fx-pie-color: rgb(" + rgb + ");");
+                            Tooltip.install(newNode, new Tooltip(String.format("%s: %.2f € (%.1f%%)", nome, valor, percentagem)));
                         }
                     });
 
-                    // se node já existe (caso raro), aplica imediatamente
                     if (data.getNode() != null) {
                         if (rgb != null) data.getNode().setStyle("-fx-pie-color: rgb(" + rgb + ");");
-                        Tooltip tip = new Tooltip(String.format("%s: %.2f € (%.1f%%)", nome, valor, percentagem));
-                        Tooltip.install(data.getNode(), tip);
+                        Tooltip.install(data.getNode(), new Tooltip(String.format("%s: %.2f € (%.1f%%)", nome, valor, percentagem)));
                     }
                 }
             });
-
         });
     }
 
-
-
-    public void atualizarVista() {
-        // Atualiza o mês no topo
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.of("pt", "PT"));
-        lblData.setText(controller.getDataModelo().format(formatter));
-
-        // Atualiza os valores das caixas de resumo
-        String montante = String.format("%.2f €", controller.getRendimentoAtual());
-        String saldo = String.format("%.2f €", controller.getSaldoAtual());
-        String totalDespesas = String.format("%.2f €", controller.getTotalDespesas());
-        String poupanca = String.format("%.2f €", controller.getPoupancaAcumulada());
-
-        caixaSalario.setValor(montante);
-        caixaSaldo.setValor(saldo);
-        caixaDespesas.setValor(totalDespesas);
-        caixaPoupanca.setValor(poupanca);
-
-        // Atualiza a tabela de despesas
-        atualizarTabelaDespesas();
-
-        listaDespesas.removeAll();
-        listaDespesas.setLayout(new GridBagLayout());
-        listaDespesas.setBackground(new Color(238, 238, 238)); // mesmo cinzento do painel direito
-        listaDespesas.setOpaque(true);
-
-        GridBagConstraints gbcList = new GridBagConstraints();
-        gbcList.gridx = 0;
-        gbcList.gridy = 0;
-        gbcList.fill = GridBagConstraints.HORIZONTAL;
-        gbcList.anchor = GridBagConstraints.NORTH;
-        gbcList.insets = new Insets(2, 2, 2, 2); // espaçamento entre itens
-
-        for (Despesa despesa : getDespesasOrdenadas()) {
-            int idDespesa = despesa.getIdDespesa();
-            String nome = despesa.getNome();
-            String valor = String.format("%.2f €", despesa.getMontante());
-            boolean fixa = despesa instanceof DespesaFixa;
-            boolean paga = fixa && ((DespesaFixa) despesa).isPago();
-
-            listaDespesas.add(new ItemDespesa(idDespesa, nome, valor, fixa, paga), gbcList);
-            gbcList.gridy++;
-        }
-
-        // cola elástica para empurrar o conteúdo para cima quando há poucas despesas
-        gbcList.weighty = 1.0;
-        listaDespesas.add(Box.createVerticalGlue(), gbcList);
-
-        listaDespesas.revalidate();
-        listaDespesas.repaint();
-        SwingUtilities.invokeLater(() -> listaDespesas.updateUI());
-        // Atualiza gráfico
-        atualizarGrafico(fxPanel);
-
-    }
-
-
-    private void atualizarTabelaDespesas() {
-        DefaultTableModel model = (DefaultTableModel) tabelaDespesas.getModel();
-        model.setRowCount(0); // Limpa todas as linhas
-
-        for (Despesa despesa : getDespesasOrdenadas()) {
-            model.addRow(new Object[]{
-                despesa.getNome(),
-                String.format("%.2f €", despesa.getMontante()),
-                despesa instanceof DespesaFixa ? "Fixa" : "Normal"
-            });
-        }
-    }
-
-
-    // Reutiliza a função que você já tem para gerar cores do nome
-    private Color gerarCorParaNome(String nome) {
+    public Color gerarCorParaNome(String nome) {
         int hash = nome.hashCode();
-        int r = 100 + Math.abs(hash) % 100;
-        int g = 100 + Math.abs(hash / 100) % 100;
-        int b = 100 + Math.abs(hash / 10000) % 100;
-        return new Color(r, g, b);
+        return new Color(100 + Math.abs(hash) % 100, 100 + Math.abs(hash / 100) % 100, 100 + Math.abs(hash / 10000) % 100);
+    }
 
+    private void configurarHotkeys() {
+        JRootPane rootPane = this.getRootPane();
+        InputMap inputMap = rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
+        ActionMap actionMap = rootPane.getActionMap();
+
+        inputMap.put(KeyStroke.getKeyStroke("RIGHT"), "avancarMes");
+        actionMap.put("avancarMes", new AbstractAction() {
+            public void actionPerformed(ActionEvent e) { controller.avancarMes(); atualizarVista(); }
+        });
+
+        inputMap.put(KeyStroke.getKeyStroke("LEFT"), "retrocederMes");
+        actionMap.put("retrocederMes", new AbstractAction() {
+            public void actionPerformed(ActionEvent e) { controller.retrocederMes(); atualizarVista(); }
+        });
     }
 
     private static void setUIFont(FontUIResource f) {
@@ -194,281 +490,13 @@ public class Janela extends JFrame {
         while (keys.hasMoreElements()) {
             Object key = keys.nextElement();
             Object value = UIManager.get(key);
-            if (value instanceof FontUIResource) {
-                UIManager.put(key, f);
-            }
+            if (value instanceof FontUIResource) UIManager.put(key, f);
         }
     }
 
-    private List<Despesa> getDespesasOrdenadas() {
-        // Cria uma cópia da lista para não modificar a original acidentalmente
-        List<Despesa> despesas = new ArrayList<>(controller.getDespesasMesAtual());
-        
-        despesas.sort((d1, d2) -> {
-            boolean d1Fixa = d1 instanceof DespesaFixa;
-            boolean d2Fixa = d2 instanceof DespesaFixa;
-            
-            // 1º Critério: Despesas fixas primeiro
-            if (d1Fixa && !d2Fixa) return -1; // d1 vem antes
-            if (!d1Fixa && d2Fixa) return 1;  // d2 vem antes
-            
-            return Integer.compare(d2.getIdDespesa(), d1.getIdDespesa());
-        });
-        
-        return despesas;
-    }
-
-
-
-
-    public Janela(MoneyCountController controller) {
-        this.controller = controller;
-        fxPanel = new JFXPanel();
-        lblData = new JLabel();
-        lblMontante = new JLabel();
-        lblSaldo = new JLabel();
-        lblDespesas = new JLabel();
-
-        setUIFont(new FontUIResource("Arial", Font.PLAIN, 14));
-
-        tabelaDespesas = new JTable(new DefaultTableModel(new Object[]{"Nome", "Valor"}, 0));
-        tabelaDespesas.setFillsViewportHeight(true);
-        tabelaDespesas.setPreferredScrollableViewportSize(new Dimension(300, 150));
-
-        setTitle("MoneyCount");
-
-        Toolkit kit = Toolkit.getDefaultToolkit();  
-        Dimension tamTela = kit.getScreenSize();  
-
-        //Pega largura e altura da tela 
-        int larg = tamTela.width;  
-        int alt = tamTela.height;
-
-        // Janela maximizada mas com barra de título visível
-        setSize(larg, alt);
-        setResizable(false);
-        setDefaultCloseOperation(EXIT_ON_CLOSE);
-        inicializarComponentes();
-        configurarHotkeys();
-        setVisible(true);
-    }
-
-    private void inicializarComponentes() {
-        setLayout(new BorderLayout());
-
-        Toolkit kit = Toolkit.getDefaultToolkit();  
-        Dimension tamTela = kit.getScreenSize();  
-
-        //Pega largura e altura da tela 
-        int larg = tamTela.width;  
-        int alt = tamTela.height;
-
-        // Painel do mês no topo
-        JPanel painelMes = new PainelComCantosInferioresArredondados();
-        painelMes.setLayout(new BorderLayout());
-
-        painelMes.setBackground(new Color(0x54, 0x54, 0x54)); // #545454
-
-        // Estilo dos botões de navegação
-        BotaoRedondo btnAnterior = new BotaoRedondo("←");
-        BotaoRedondo btnSeguinte = new BotaoRedondo("→");
-
-        btnSeguinte.addActionListener(e -> {
-            controller.avancarMes();
-            atualizarVista();
-        });
-
-        btnAnterior.addActionListener(e -> {
-            controller.retrocederMes();
-            atualizarVista();
-        });
-    
-        // Painel com margens para os botões (60px do centro)
-        JPanel painelEsquerda = new JPanel(new FlowLayout(FlowLayout.LEFT, 20, 5));
-        painelEsquerda.setOpaque(false);
-        painelEsquerda.add(btnAnterior);
-
-        JPanel painelDireita = new JPanel(new FlowLayout(FlowLayout.RIGHT, 20, 5));
-        painelDireita.setOpaque(false);
-        painelDireita.add(btnSeguinte);
-
-        // Texto central do mês
-        lblData = new JLabel(controller.getDataModeloString(), SwingConstants.CENTER);
-        lblData.setForeground(Color.WHITE);
-        lblData.setFont(new Font("Arial", Font.BOLD, 22));
-
-        // Montagem final
-        painelMes.add(painelEsquerda, BorderLayout.WEST);
-        painelMes.add(lblData, BorderLayout.CENTER);
-        painelMes.add(painelDireita, BorderLayout.EAST);
-
-        add(painelMes, BorderLayout.NORTH);
-
-
-        
-
-        // Painéis principal (dividido)
-        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
-        splitPane.setDividerLocation(larg/2);
-        splitPane.setEnabled(false); // Impede o utilizador de arrastar
-        splitPane.setDividerSize(0); 
-
-        
-
-        // PAINEL ESQUERDO — Gráfico + Resumo
-        Box painelEsquerdo = Box.createVerticalBox();
-        painelEsquerdo.setBackground(Color.WHITE);
-        painelEsquerdo.setOpaque(true);
-
-        fxPanel = new JFXPanel();
-        fxPanel.setPreferredSize(new Dimension(600, alturaGrafico));
-        fxPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 600));
-        painelEsquerdo.add(fxPanel);
-
-        // Atualiza gráfico
-        atualizarGrafico(fxPanel);
-
-        // PAINEL RESUMO (abaixo do gráfico)
-        String rendimento = String.format("%.2f €", controller.getRendimentoAtual());
-        String saldo = String.format("%.2f €", controller.getSaldoAtual());
-        String totalDespesas = String.format("%.2f €", controller.getTotalDespesas());
-        String poupanca = String.format("%.2f €", controller.getPoupancaAcumulada());
-
-        JPanel painelResumo = new JPanel(new GridBagLayout());
-        painelResumo.setBackground(Color.WHITE);
-        painelResumo.setOpaque(true);
-        painelResumo.setMaximumSize(new Dimension(Integer.MAX_VALUE, 300)); // altura igual à anterior da direita
-
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(10, 20, 10, 20);
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-
-        // Montantes
-        gbc.gridx = 0;
-        gbc.gridy = 0;
-        caixaSalario = new CaixaTituloValor("Salário", rendimento);
-        painelResumo.add(caixaSalario, gbc);
-
-        gbc.gridx = 1;
-        gbc.gridy = 1;
-        caixaSaldo = new CaixaTituloValor("Saldo Disp.", saldo);
-        painelResumo.add(caixaSaldo, gbc);
-
-        gbc.gridx = 1;
-        gbc.gridy = 0;
-        caixaDespesas = new CaixaTituloValor("Despesas", totalDespesas);
-        painelResumo.add(caixaDespesas, gbc);
-
-        gbc.gridx = 0;
-        gbc.gridy = 1;
-        caixaPoupanca = new CaixaTituloValor("Poupança", poupanca);
-        //gbc.gridwidth = 2;
-        painelResumo.add(caixaPoupanca, gbc);
-
-        painelEsquerdo.add(Box.createVerticalStrut(10));
-        painelEsquerdo.add(painelResumo);
-
-        // PAINEL DIREITO — Despesas
-        JPanel painelDireito = new JPanel();
-        painelDireito.setLayout(new BorderLayout());
-        painelDireito.setBackground(new Color(238, 238, 238));
-        painelDireito.setOpaque(true);
-        painelDireito.setPreferredSize(new Dimension(400, Integer.MAX_VALUE)); // altura igual ao painelEsquerdo
-
-        // Painel horizontal para o título "Despesas" + botões
-        JPanel painelTituloComBotoes = new JPanel(new FlowLayout(FlowLayout.LEFT, 20, 10));
-        painelTituloComBotoes.setOpaque(false);
-
-        // Botões
-        JButton btnDespesa = new BotaoEstiloTitulo("+ Despesa", new Color(174, 239, 164));   // verde pastel
-        JButton btnDespesaFixa = new BotaoEstiloTitulo("+ Despesa Fixa", new Color(220, 167, 235)); // lilás pastel
-
-        btnDespesa.addActionListener(e -> {
-            String nome = JOptionPane.showInputDialog(this, "Nome da despesa:");
-            if (nome == null || nome.trim().isEmpty()) return;
-
-            String valorStr = JOptionPane.showInputDialog(this, "Valor da despesa (€):");
-            if (valorStr == null || valorStr.trim().isEmpty()) return;
-
-            try {
-                double valor = Double.parseDouble(valorStr);
-                controller.adicionarDespesa(nome, valor, false);
-                atualizarVista();
-            } catch (NumberFormatException ex) {
-                JOptionPane.showMessageDialog(this, "Valor inválido!", "Erro", JOptionPane.ERROR_MESSAGE);
-            }
-        });
-
-        btnDespesaFixa.addActionListener(e -> {
-            String nome = JOptionPane.showInputDialog(this, "Nome da despesa fixa:");
-            if (nome == null || nome.trim().isEmpty()) return;
-
-            String valorStr = JOptionPane.showInputDialog(this, "Valor da despesa (€):");
-            if (valorStr == null || valorStr.trim().isEmpty()) return;
-
-            try {
-                double valor = Double.parseDouble(valorStr);
-                controller.adicionarDespesa(nome, valor, true);
-                atualizarVista();
-            } catch (NumberFormatException ex) {
-                JOptionPane.showMessageDialog(this, "Valor inválido!", "Erro", JOptionPane.ERROR_MESSAGE);
-            }
-        });
-
-        painelTituloComBotoes.add(btnDespesa);
-        painelTituloComBotoes.add(btnDespesaFixa);
-        painelDireito.add(painelTituloComBotoes, BorderLayout.NORTH);
-
-        // Lista de despesas com scroll
-        listaDespesas = new JPanel(new GridBagLayout());
-        listaDespesas.setBackground(new Color(238, 238, 238)); // fundo igual ao painel direito
-        listaDespesas.setOpaque(true);
-
-        GridBagConstraints gbcList = new GridBagConstraints();
-        gbcList.gridx = 0;
-        gbcList.gridy = 0;
-        gbcList.fill = GridBagConstraints.HORIZONTAL;
-        gbcList.anchor = GridBagConstraints.NORTH;
-        gbcList.insets = new Insets(2, 2, 2, 2); // espaçamento entre itens
-
-        for (Despesa despesa : controller.getDespesasMesAtual()) {
-            int idDespesa = despesa.getIdDespesa();
-            String nome = despesa.getNome();
-            String valor = String.format("%.2f €", despesa.getMontante());
-            listaDespesas.add(new ItemDespesa(idDespesa, nome, valor), gbcList);
-            gbcList.gridy++;
-        }
-
-        // “cola” flexível no fim para manter a distância
-        gbcList.weighty = 1.0;
-        listaDespesas.add(Box.createVerticalGlue(), gbcList);
-
-        JScrollPane scrollDespesas = new JScrollPane(listaDespesas);
-        scrollDespesas.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
-        scrollDespesas.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
-        scrollDespesas.setBorder(BorderFactory.createEmptyBorder(0, 0, 50, 0));
-        scrollDespesas.setPreferredSize(new Dimension(400, 300));
-        scrollDespesas.getVerticalScrollBar().setUI(new ScrollBarCinzaArredondada());
-        painelDireito.add(scrollDespesas, BorderLayout.CENTER);
-
-        // Adiciona ao JSplitPane
-        splitPane.setLeftComponent(painelEsquerdo);
-        splitPane.setRightComponent(painelDireito);
-
-
-        // Adiciona à janela principal
-        add(splitPane, BorderLayout.CENTER);
-    }
-
-    private JButton criarBotaoEstilizado(String texto, Color fundo, Color textoCor) {
-        JButton botao = new JButton(texto);
-        botao.setBackground(fundo);
-        botao.setForeground(textoCor);
-        botao.setFocusPainted(false);
-        botao.setFont(new Font("Arial", Font.BOLD, 14));
-        botao.setBorder(BorderFactory.createEmptyBorder(10, 15, 10, 15));
-        return botao;
-    }
+    // =========================================================================
+    // CLASSES INTERNAS (COMPONENTES VISUAIS CUSTOMIZADOS)
+    // =========================================================================
 
     private static class BotaoRedondo extends JButton {
         public BotaoRedondo(String texto) {
@@ -477,61 +505,32 @@ public class Janela extends JFrame {
             setMargin(new Insets(0, 0, 0, 0)); 
             setFocusPainted(false);
             setContentAreaFilled(false);
-            setOpaque(false);
             setBorderPainted(false);
             setForeground(Color.WHITE);
             setFont(new Font("Arial", Font.BOLD, 20));
         }
 
-
-        @Override
-        protected void paintComponent(Graphics g) {
+        @Override protected void paintComponent(Graphics g) {
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
-            g2.setColor(new Color(0x3A, 0x3A, 0x3A)); // Fundo escuro
+            g2.setColor(new Color(0x3A, 0x3A, 0x3A));
             g2.fillOval(0, 0, getWidth(), getHeight());
-
             super.paintComponent(g);
             g2.dispose();
         }
-
-        @Override
-        protected void paintBorder(Graphics g) {
-            // Sem borda
-        }
-
     }
 
     private static class PainelComCantosInferioresArredondados extends JPanel {
-        private final int arc = 0;
+        public PainelComCantosInferioresArredondados() { setOpaque(false); }
 
-        public PainelComCantosInferioresArredondados() {
-            setOpaque(false);
-        }
-
-        @Override
-        protected void paintComponent(Graphics g) {
-            super.paintComponent(g);  // mantém os componentes filhos
-
+        @Override protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
-            int w = getWidth();
-            int h = getHeight();
-
             Path2D path = new Path2D.Float();
-            path.moveTo(0, 0);
-            path.lineTo(0, h - arc);
-            path.quadTo(0, h, arc, h); // canto inferior esquerdo
-            path.lineTo(w - arc, h);
-            path.quadTo(w, h, w, h - arc); // canto inferior direito
-            path.lineTo(w, 0);
-            path.closePath();
-
-            g2.setColor(new Color(0x54, 0x54, 0x54)); // fundo da barra
+            path.moveTo(0, 0); path.lineTo(0, getHeight()); path.lineTo(getWidth(), getHeight()); path.lineTo(getWidth(), 0); path.closePath();
+            g2.setColor(new Color(0x54, 0x54, 0x54));
             g2.fill(path);
-
             g2.dispose();
         }
     }
@@ -539,18 +538,12 @@ public class Janela extends JFrame {
     private static class CaixaTituloValor extends JPanel {
         private JLabel lblValor;
 
-        public CaixaTituloValor(String titulo) {
-            this(titulo, null);
-        }
-        
         public CaixaTituloValor(String titulo, String valor) {
             setLayout(new BorderLayout());
             setOpaque(false);
 
-            // Painel arredondado para o título
             JPanel fundoTitulo = new JPanel() {
-                @Override
-                protected void paintComponent(Graphics g) {
+                @Override protected void paintComponent(Graphics g) {
                     super.paintComponent(g);
                     Graphics2D g2 = (Graphics2D) g.create();
                     g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -558,80 +551,51 @@ public class Janela extends JFrame {
                     g2.fillRoundRect(0, 0, getWidth(), getHeight(), 70, 70);
                     g2.dispose();
                 }
-
-                @Override
-                public Dimension getPreferredSize() {
-                    // Calcula tamanho baseado no texto e botão (se houver)
-                    Component[] comps = getComponents();
-                    int totalWidth = 20; // margens laterais
-                    int maxHeight = 0;
-
-                    for (Component c : comps) {
-                        Dimension d = c.getPreferredSize();
-                        totalWidth += d.width + 10; // espaçamento
-                        maxHeight = Math.max(maxHeight, d.height);
-                    }
-
-                    return new Dimension(totalWidth, maxHeight + 10); // margem vertical
-                }
             };
             fundoTitulo.setLayout(new FlowLayout(FlowLayout.CENTER, 10, 5));
             fundoTitulo.setOpaque(false);
 
             JLabel lblTitulo = new JLabel(titulo);
             lblTitulo.setFont(new Font("Arial", Font.BOLD, 42));
-
             fundoTitulo.add(lblTitulo);
 
-            // Só adiciona o botão se for "Salário"
             if (titulo.equalsIgnoreCase("Salário")) {
                 JButton btnEditar = new BotaoRedondoAzul("✏️");
-                btnEditar.setToolTipText("Editar Montante");
                 fundoTitulo.add(btnEditar);
-
                 btnEditar.addActionListener(e -> {
-                    String novoSalarioStr = JOptionPane.showInputDialog(this, "Novo salário (€):");
-                    if (novoSalarioStr == null || novoSalarioStr.trim().isEmpty()) return;
-
+                    Janela j = (Janela) SwingUtilities.getWindowAncestor(this);
+                    String novoStr = j.mostrarDialogoInputSemBorda("Novo salário (€):");
+                    if (novoStr == null || novoStr.trim().isEmpty()) return;
                     try {
-                        double novoSalario = Double.parseDouble(novoSalarioStr);
-                        ((Janela) SwingUtilities.getWindowAncestor(this)).controller.atualizarRendimento(novoSalario);
-                        ((Janela) SwingUtilities.getWindowAncestor(this)).atualizarVista();
+                        j.controller.atualizarRendimento(Double.parseDouble(novoStr.replace(",", ".")));
+                        j.atualizarVista();
                     } catch (NumberFormatException ex) {
-                        JOptionPane.showMessageDialog(this, "Valor inválido!", "Erro", JOptionPane.ERROR_MESSAGE);
+                        JOptionPane.showMessageDialog(this, "Valor inválido!");
                     }
                 });
             }
 
             lblValor = new JLabel(valor);
-            lblValor.setFont(new Font("Arial", Font.PLAIN, 26));
-            lblValor.setHorizontalAlignment(SwingConstants.LEFT);
+            lblValor.setFont(new Font("Arial", Font.PLAIN, 30));
             JPanel valorPanel = new JPanel(new BorderLayout());
             valorPanel.setOpaque(false);
-            valorPanel.setBorder(BorderFactory.createEmptyBorder(0, 20, 0, 0)); // 5px à esquerda
+            valorPanel.setBorder(BorderFactory.createEmptyBorder(0, 20, 0, 0));
             valorPanel.add(lblValor, BorderLayout.CENTER);
 
             add(valorPanel, BorderLayout.SOUTH);
             add(fundoTitulo, BorderLayout.CENTER);
-            
         }
 
-        // Botão azul redondo com emoji
+        public void setValor(String novoValor) { lblValor.setText(novoValor); }
+
         private static class BotaoRedondoAzul extends JButton {
             public BotaoRedondoAzul(String texto) {
                 super(texto);
-                setPreferredSize(new Dimension(35, 35));
-                setMargin(new Insets(0, 0, 0, 0)); 
-                setFocusPainted(false);
-                setContentAreaFilled(false);
-                setOpaque(false);
-                setBorderPainted(false);
-                setForeground(Color.WHITE);
-                setFont(new Font("Arial", Font.BOLD, 22));
+                setPreferredSize(new Dimension(45, 45));
+                setFocusPainted(false); setContentAreaFilled(false); setBorderPainted(false);
+                setForeground(Color.WHITE); setFont(new Font("SansSerif", Font.PLAIN, 12));
             }
-
-            @Override
-            protected void paintComponent(Graphics g) {
+            @Override protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 g2.setColor(new Color(82,113,255)); 
@@ -639,319 +603,170 @@ public class Janela extends JFrame {
                 super.paintComponent(g);
                 g2.dispose();
             }
-
-            @Override
-            protected void paintBorder(Graphics g) {}
         }
-
-        public void setValor(String novoValor) {
-            lblValor.setText(novoValor);
-        }
-
     }
 
     private static class BotaoEstiloTitulo extends JButton {
         private final Color corFundo;
-
         public BotaoEstiloTitulo(String texto, Color corFundo) {
-            super(texto);
-            this.corFundo = corFundo;
-            setFont(new Font("Arial", Font.BOLD, 26));
-            setForeground(new Color(84, 84, 84));
-            setFocusPainted(false);
-            setContentAreaFilled(false);
-            setOpaque(false);
-            setBorderPainted(false);
-            setMargin(new Insets(10, 20, 10, 20)); // Espaçamento interno
+            super(texto); this.corFundo = corFundo;
+            setFont(new Font("Arial", Font.BOLD, 26)); setForeground(new Color(84, 84, 84));
+            setFocusPainted(false); setContentAreaFilled(false); setBorderPainted(false);
+            setMargin(new Insets(10, 20, 10, 20));
         }
-
-        @Override
-        public Dimension getPreferredSize() {
-            FontMetrics fm = getFontMetrics(getFont());
-            int width = fm.stringWidth(getText()) + 50;
-            int height = 50; // Altura semelhante à do título
-            return new Dimension(width, height);
+        @Override public Dimension getPreferredSize() {
+            return new Dimension(getFontMetrics(getFont()).stringWidth(getText()) + 50, 50);
         }
-
-        @Override
-        protected void paintComponent(Graphics g) {
+        @Override protected void paintComponent(Graphics g) {
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g2.setColor(corFundo);
-            g2.fillRoundRect(0, 0, getWidth(), getHeight(), 50, 50);
-            super.paintComponent(g);
-            g2.dispose();
-        }
-
-        @Override
-        protected void paintBorder(Graphics g) {
-            // Sem borda
+            g2.setColor(corFundo); g2.fillRoundRect(0, 0, getWidth(), getHeight(), 50, 50);
+            super.paintComponent(g); g2.dispose();
         }
     }
 
     private static class ItemDespesa extends JPanel {
-        private JPanel painelConteudo;
-        private JLabel lblNome;
-        private JLabel lblValor;
-
-        public ItemDespesa(int idDespesa, String nome, String valor) {
-            this(idDespesa, nome, valor, false, true); // compatibilidade
-        }
-
-        public ItemDespesa(int idDespesa, String nome, String valor, boolean fixa, boolean paga) {
+        public ItemDespesa(int id, String nome, String valor, boolean fixa, boolean paga) {
             setLayout(new FlowLayout(FlowLayout.LEFT, 10, 10));
             setOpaque(false);
 
-            // Checkbox apenas se for despesa fixa
-            final JCheckBox chkPaga = fixa ? new JCheckBox() : null;
-            if (chkPaga != null) {
-                chkPaga.setSelected(paga);
-                chkPaga.setOpaque(false);
-                chkPaga.setToolTipText("Marcar como paga");
-            }
+            JCheckBox chkPaga = fixa ? new JCheckBox() : null;
+            if (chkPaga != null) { chkPaga.setSelected(paga); chkPaga.setOpaque(false); }
 
-            // Painel colorido arredondado
-            // Painel de conteúdo (onde fica o fundo colorido e todos os elementos)
-            painelConteudo = new JPanel() {
-                @Override
-                protected void paintComponent(Graphics g) {
+            JLabel lblNome = new JLabel(nome);
+            lblNome.setFont(new Font("Arial", Font.BOLD, 20)); lblNome.setForeground(Color.WHITE);
+
+            JLabel lblValor = new JLabel(valor);
+            lblValor.setFont(new Font("Arial", Font.PLAIN, 20)); lblValor.setForeground(Color.WHITE);
+
+            JPanel painelConteudo = new JPanel() {
+                @Override protected void paintComponent(Graphics g) {
                     super.paintComponent(g);
-
                     Graphics2D g2 = (Graphics2D) g.create();
                     g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
-                    Janela janela = (Janela) SwingUtilities.getWindowAncestor(ItemDespesa.this);
-                    Color base = janela.gerarCorParaNome(nome);
-
-                    int alpha = 255;
-
+                    
+                    Janela j = (Janela) SwingUtilities.getWindowAncestor(this);
+                    Color base = j != null ? j.gerarCorParaNome(nome) : Color.GRAY;
+                    
                     if (fixa && chkPaga != null && !chkPaga.isSelected()) {
-                        alpha = 100;
-                        lblNome.setForeground(new Color(90, 90, 90));
-                        lblValor.setForeground(new Color(90, 90, 90));
-
-                    } else if (fixa && chkPaga != null && chkPaga.isSelected()) {
-                        alpha = 255;
-                        lblNome.setForeground(Color.WHITE);
-                        lblValor.setForeground(Color.WHITE);
-
+                        base = new Color(base.getRed(), base.getGreen(), base.getBlue(), 100);
+                        lblNome.setForeground(new Color(90, 90, 90)); lblValor.setForeground(new Color(90, 90, 90));
+                    } else {
+                        lblNome.setForeground(Color.WHITE); lblValor.setForeground(Color.WHITE);
                     }
-
-                    base = new Color(base.getRed(), base.getGreen(), base.getBlue(), alpha);
-                    g2.setColor(base);
-                    g2.fillRoundRect(0, 0, getWidth(), getHeight(), 50, 50);
-                    g2.dispose();
+                    g2.setColor(base); g2.fillRoundRect(0, 0, getWidth(), getHeight(), 50, 50); g2.dispose();
                 }
             };
-
-            painelConteudo.setOpaque(false);
-            painelConteudo.setLayout(new FlowLayout(FlowLayout.LEFT, 10, 10));
+            painelConteudo.setOpaque(false); painelConteudo.setLayout(new FlowLayout(FlowLayout.LEFT, 10, 10));
             painelConteudo.setPreferredSize(new Dimension(500, 50));
-            painelConteudo.setMaximumSize(new Dimension(500, 50));
 
-            
-
-            // CheckBox para despesa fixa
             if (chkPaga != null) {
                 painelConteudo.add(chkPaga);
-
                 chkPaga.addActionListener(e -> {
-                    Janela janela = (Janela) SwingUtilities.getWindowAncestor(ItemDespesa.this);
-                    boolean novoEstado = chkPaga.isSelected();
-                    janela.controller.marcarDespesaComoPaga(idDespesa, novoEstado);
-                    repaint(); // apenas repinta a cor, não desativa nada
-                    SwingUtilities.invokeLater(() -> janela.atualizarVista());
+                    Janela j = (Janela) SwingUtilities.getWindowAncestor(this);
+                    j.controller.marcarDespesaComoPaga(id, chkPaga.isSelected());
+                    SwingUtilities.invokeLater(() -> j.atualizarVista());
                 });
             }
+            painelConteudo.add(lblNome); painelConteudo.add(lblValor);
 
-
-            // Labels
-            lblNome = new JLabel(nome);
-            lblNome.setFont(new Font("Arial", Font.BOLD, 20));
-            lblNome.setForeground(Color.WHITE);
-
-            lblValor = new JLabel(valor);
-            lblValor.setFont(new Font("Arial", Font.PLAIN, 20));
-            lblValor.setForeground(Color.WHITE);
-
-            painelConteudo.add(lblNome);
-            painelConteudo.add(lblValor);
-
-            // Botões
             JButton btnEditar = new BotaoRedondoColorido("✏️", new Color(82, 113, 255));
             JButton btnRemover = new BotaoRedondoColorido("🗑️", new Color(255, 82, 82));
 
             btnEditar.addActionListener(e -> {
-                String novoValorStr = JOptionPane.showInputDialog(this, "Novo valor para " + nome + ":");
-                if (novoValorStr == null || novoValorStr.trim().isEmpty()) return;
+                Janela j = (Janela) SwingUtilities.getWindowAncestor(this);
+                Color corDaDespesa = j.gerarCorParaNome(nome);
+                String hexCor = String.format("#%02x%02x%02x", corDaDespesa.getRed(), corDaDespesa.getGreen(), corDaDespesa.getBlue());
+                String msg = "<html>Novo valor para <b><font color='" + hexCor + "'>" + nome + "</font></b>:</html>";
+                String novoVal = j.mostrarDialogoInputSemBorda(msg);
+                if (novoVal == null || novoVal.trim().isEmpty()) return;
                 try {
-                    double novoValor = Double.parseDouble(novoValorStr);
-                    Janela janela = (Janela) SwingUtilities.getWindowAncestor(this);
-                    Despesa despesaAtual = janela.controller.getRegistoAtual().getDespesas().get(idDespesa);
-
-                    if (despesaAtual instanceof DespesaFixa) {
-                        janela.controller.editarDespesaFixaFuturas(idDespesa, novoValor);
-                    } else {
-                        janela.controller.editarDespesa(idDespesa, novoValor);
-                    }
-                    janela.atualizarVista();
-                } catch (NumberFormatException ex) {
-                    JOptionPane.showMessageDialog(this, "Valor inválido!", "Erro", JOptionPane.ERROR_MESSAGE);
-                }
+                    if (fixa) j.controller.editarDespesaFixaFuturas(id, Double.parseDouble(novoVal.replace(",", ".")));
+                    else j.controller.editarDespesa(id, Double.parseDouble(novoVal.replace(",", ".")));
+                    j.atualizarVista();
+                } catch (Exception ex) { JOptionPane.showMessageDialog(this, "Erro ao editar!"); }
             });
 
             btnRemover.addActionListener(e -> {
-                int opcao = JOptionPane.showConfirmDialog(this,
-                        "Remover despesa \"" + nome + "\"?",
-                        "Confirmação",
-                        JOptionPane.YES_NO_OPTION);
-                if (opcao == JOptionPane.YES_OPTION) {
-                    Janela janela = (Janela) SwingUtilities.getWindowAncestor(this);
-                    Despesa despesaAtual = janela.controller.getRegistoAtual().getDespesas().get(idDespesa);
-
-                    // proteção contra null (evita crash)
-                    if (despesaAtual == null) {
-                        // tenta encontrar pela lista de despesas (fallback)
-                        for (Despesa d : janela.controller.getRegistoAtual().getDespesas().values()) {
-                            if (d.getNome().equalsIgnoreCase(nome) && d instanceof DespesaFixa) {
-                                despesaAtual = d;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (despesaAtual == null) {
-                        // informa o utilizador e aborta
-                        JOptionPane.showMessageDialog(this, "Despesa não encontrada (id " + idDespesa + ").", "Erro", JOptionPane.ERROR_MESSAGE);
-                        return;
-                    }
-
-                    if (despesaAtual instanceof DespesaFixa) {
-                        janela.controller.removerDespesaFixaFuturas(despesaAtual.getIdDespesa());
+                Janela j = (Janela) SwingUtilities.getWindowAncestor(this);
+                Color corDaDespesa = j.gerarCorParaNome(nome);
+                String hexCor = String.format("#%02x%02x%02x", corDaDespesa.getRed(), corDaDespesa.getGreen(), corDaDespesa.getBlue());
+                String msg = "<html>Tem a certeza que deseja remover a despesa <b><font color='" + hexCor + "'>" + nome + "</font></b>?</html>";
+                boolean confirmar = j.mostrarDialogoConfirmacaoSemBorda(msg);
+                if (confirmar) {
+                    if (fixa) {
+                        j.controller.removerDespesaFixaFuturas(id);
                     } else {
-                        janela.controller.removerDespesa(despesaAtual.getIdDespesa());
+                        j.controller.removerDespesa(id);
                     }
-                    janela.atualizarVista();
+                    j.atualizarVista();
                 }
             });
 
-
-            add(painelConteudo);
-            add(btnEditar);
-            add(btnRemover);
+            add(painelConteudo); add(btnEditar); add(btnRemover);
         }
-        
 
-    }
-
-
-        // Botão colorido redondo
         private static class BotaoRedondoColorido extends JButton {
             private final Color corFundo;
-
             public BotaoRedondoColorido(String emoji, Color corFundo) {
-                super(emoji);
-                this.corFundo = corFundo;
-                setPreferredSize(new Dimension(40, 40));
-                setMargin(new Insets(0, 0, 0, 0));
-                setFocusPainted(false);
-                setContentAreaFilled(false);
-                setOpaque(false);
-                setBorderPainted(false);
-                setFont(new Font("Arial", Font.BOLD, 18));
-                setForeground(Color.WHITE);
+                super(emoji); this.corFundo = corFundo;
+                setPreferredSize(new Dimension(45, 45)); setFocusPainted(false); setContentAreaFilled(false);
+                setBorderPainted(false); setForeground(Color.WHITE); setFont(new Font("SansSerif", Font.PLAIN, 12));
             }
-
-            @Override
-            protected void paintComponent(Graphics g) {
+            @Override protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(corFundo);
-                g2.fillOval(0, 0, getWidth(), getHeight());
-                super.paintComponent(g);
-                g2.dispose();
+                g2.setColor(corFundo); g2.fillOval(0, 0, getWidth(), getHeight());
+                super.paintComponent(g); g2.dispose();
             }
-
-            @Override
-            protected void paintBorder(Graphics g) {}
         }
+    }
 
     private static class ScrollBarCinzaArredondada extends BasicScrollBarUI {
-        private final int arc = 20;
+        @Override protected void configureScrollBarColors() {
+            thumbColor = new Color(180, 180, 180); trackColor = new Color(230, 230, 230);
+        }
+        @Override protected void paintThumb(Graphics g, JComponent c, Rectangle bounds) {
+            Graphics2D g2 = (Graphics2D) g.create(); g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setColor(thumbColor); g2.fillRoundRect(bounds.x, bounds.y, bounds.width, bounds.height, 20, 20); g2.dispose();
+        }
+        @Override protected void paintTrack(Graphics g, JComponent c, Rectangle bounds) {
+            Graphics2D g2 = (Graphics2D) g.create(); g2.setColor(trackColor);
+            g2.fillRoundRect(bounds.x, bounds.y, bounds.width, bounds.height, 20, 20); g2.dispose();
+        }
+        @Override protected JButton createDecreaseButton(int o) { JButton b=new JButton(); b.setPreferredSize(new Dimension(0,0)); return b; }
+        @Override protected JButton createIncreaseButton(int o) { JButton b=new JButton(); b.setPreferredSize(new Dimension(0,0)); return b; }
+    }
 
-        @Override
-        protected void configureScrollBarColors() {
-            thumbColor = new Color(180, 180, 180); // cor cinzenta
-            trackColor = new Color(230, 230, 230); // fundo claro
+    // Painel personalizado que desenha uma sombra esfumada à volta do fundo branco
+    private static class PainelSombra extends JPanel {
+        private final int tamanhoSombra = 5; // Espessura da sombra
+
+        public PainelSombra() {
+            setOpaque(false); // O painel base tem de ser transparente
+            setLayout(new BorderLayout());
+            // Margem para a sombra não ser cortada pelos limites da janela
+            setBorder(BorderFactory.createEmptyBorder(tamanhoSombra, tamanhoSombra, tamanhoSombra, tamanhoSombra));
         }
 
         @Override
-        protected void paintThumb(Graphics g, JComponent c, Rectangle thumbBounds) {
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-            g2.setColor(thumbColor);
-            g2.fillRoundRect(thumbBounds.x, thumbBounds.y, thumbBounds.width, thumbBounds.height, arc, arc);
+            // 1. Desenha várias camadas sobrepostas para criar o "blur" da sombra
+            for (int i = 0; i < tamanhoSombra; i++) {
+                float opacidade = 0.05f * (1.0f - ((float) i / tamanhoSombra));
+                g2.setColor(new Color(0, 0, 0, opacidade)); // Preto com transparência
+                g2.fillRoundRect(i, i, getWidth() - i * 2, getHeight() - i * 2, 12, 12);
+            }
 
+            // 2. Desenha o fundo branco principal por cima da sombra
+            g2.setColor(Color.WHITE);
+            g2.fillRoundRect(tamanhoSombra, tamanhoSombra, getWidth() - tamanhoSombra * 2, getHeight() - tamanhoSombra * 2, 8, 8);
+            
             g2.dispose();
         }
-
-        @Override
-        protected void paintTrack(Graphics g, JComponent c, Rectangle trackBounds) {
-            Graphics2D g2 = (Graphics2D) g.create();
-            g2.setColor(trackColor);
-            g2.fillRoundRect(trackBounds.x, trackBounds.y, trackBounds.width, trackBounds.height, arc, arc);
-            g2.dispose();
-        }
-
-        // Remove os botões ↑ ↓
-        @Override
-        protected JButton createDecreaseButton(int orientation) {
-            return createZeroButton();
-        }
-
-        @Override
-        protected JButton createIncreaseButton(int orientation) {
-            return createZeroButton();
-        }
-
-        private JButton createZeroButton() {
-            JButton btn = new JButton();
-            btn.setPreferredSize(new Dimension(0, 0));
-            btn.setMinimumSize(new Dimension(0, 0));
-            btn.setMaximumSize(new Dimension(0, 0));
-            return btn;
-        }
-    }
-
-    private void configurarHotkeys() {
-        JRootPane rootPane = this.getRootPane();
-        InputMap inputMap = rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
-        ActionMap actionMap = rootPane.getActionMap();
-
-            // Atalho: Seta para a Direita (Avançar)
-        inputMap.put(KeyStroke.getKeyStroke("RIGHT"), "avancarMes");
-        actionMap.put("avancarMes", new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                // Lógica para avançar o mês no seu controller
-                controller.avancarMes(); 
-                atualizarVista(); // Método que você usa para dar refresh nos labels/tabela
-            }
-        });
-
-        // Atalho: Seta para a Esquerda (Recuar)
-        inputMap.put(KeyStroke.getKeyStroke("LEFT"), "retrocederMes");
-        actionMap.put("retrocederMes", new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                // Lógica para recuar o mês no seu controller
-                controller.retrocederMes();
-                atualizarVista();
-            }
-        });
     }
 }
-
-
-

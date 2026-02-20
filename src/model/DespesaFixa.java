@@ -1,33 +1,29 @@
 package model;
 
-import utils.Serializer;
-
 import java.io.Serializable;
-import java.time.LocalDate;
 
-public class DespesaFixa extends Despesa implements Serializable{
+public class DespesaFixa extends Despesa implements Serializable {
 
     private boolean pago;
 
     /**
      * Construtor parametrizado.
-     * 
+     * * @param idDespesa Id único da despesa.
      * @param nome Nome da despesa fixa.
      * @param montante Montante da despesa fixa.
      * @param pago Indica se já foi paga.
      */
-    public DespesaFixa(String nome, double montante, boolean pago) {
-        super(nome, montante);
+    public DespesaFixa(int idDespesa, String nome, double montante, boolean pago) {
+        super(idDespesa, nome, montante); // Passa o ID para a superclasse
         this.pago = pago;
     }
 
     /**
      * Construtor cópia.
-     * 
-     * @param outra DespesaFixa a copiar.
+     * * @param outra DespesaFixa a copiar.
      */
     public DespesaFixa(DespesaFixa outra) {
-        super(outra.getNome(), outra.getMontante());
+        super(outra); // Usa o construtor cópia da superclasse
         this.pago = outra.isPago();
     }
 
@@ -38,7 +34,6 @@ public class DespesaFixa extends Despesa implements Serializable{
     public DespesaFixa clone() {
         return new DespesaFixa(this);
     }
-
 
     public boolean isPago() {
         return pago;
