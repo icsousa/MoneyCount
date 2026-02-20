@@ -17,7 +17,7 @@ To run this project, you must have the following installed:
 | File/Folder | Description |
 | :--- | :--- |
 | `src/` | Application source code (`.java`). |
-| `resources/` | External libraries (JavaFX SDK). |
+| `resources/` | External dependencies and Static assets |
 | `out/` | Compiled files (`.class`). |
 | `doc/` | Project documentation. |
 | `diagram/` | Diagrams and schemes (UML/Architecture). |
