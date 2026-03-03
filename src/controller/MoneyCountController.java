@@ -100,7 +100,7 @@ public class MoneyCountController {
         double total = 0.0;
 
         for (Map.Entry<YearMonth, Registo> entry : modelo.getRegistos().entrySet()) {
-            if (!entry.getKey().isAfter(hoje)) {
+            if (entry.getKey().isBefore(hoje)) {
                 Registo r = entry.getValue();
                 total += r.getRendimento() - r.getTotalDespesas();
             }
