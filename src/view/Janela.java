@@ -3,6 +3,7 @@ package view;
 import controller.MoneyCountController;
 import model.Despesa;
 import model.DespesaFixa;
+import model.Entrada;
 
 import javax.swing.*;
 import javax.swing.plaf.FontUIResource;
@@ -28,7 +29,7 @@ import java.util.Locale;
 public class Janela extends JFrame {
     private MoneyCountController controller;
     private JLabel lblData;
-    private JPanel listaDespesas;
+    private JPanel listaDespesas; 
     private CaixaTituloValor caixaSalario, caixaSaldo, caixaDespesas, caixaPoupanca;
     private JFXPanel fxPanel;
     private final int alturaGrafico = 300;
@@ -127,7 +128,7 @@ public class Janela extends JFrame {
         gbc.insets = new Insets(10, 20, 10, 20);
         gbc.fill = GridBagConstraints.HORIZONTAL;
 
-        caixaSalario = new CaixaTituloValor("Salário", String.format("%.2f €", controller.getRendimentoAtual()));
+        caixaSalario = new CaixaTituloValor("Base", String.format("%.2f €", controller.getRendimentoAtual()));
         caixaSaldo = new CaixaTituloValor("Saldo Disp.", String.format("%.2f €", controller.getSaldoAtual()));
         caixaDespesas = new CaixaTituloValor("Despesas", String.format("%.2f €", controller.getTotalDespesas()));
         caixaPoupanca = new CaixaTituloValor("Poupança", String.format("%.2f €", controller.getPoupancaAcumulada()));
@@ -147,26 +148,30 @@ public class Janela extends JFrame {
         JPanel painelDireito = new JPanel(new BorderLayout());
         painelDireito.setBackground(new Color(238, 238, 238));
         painelDireito.setOpaque(true);
-        painelDireito.setPreferredSize(new Dimension(400, Integer.MAX_VALUE));
+        painelDireito.setPreferredSize(new Dimension(500, Integer.MAX_VALUE)); 
 
-        JPanel painelTituloComBotoes = new JPanel(new FlowLayout(FlowLayout.LEFT, 20, 10));
+        JPanel painelTituloComBotoes = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 10));
         painelTituloComBotoes.setOpaque(false);
 
         JButton btnDespesa = new BotaoEstiloTitulo("+ Despesa", new Color(174, 239, 164));
         JButton btnDespesaFixa = new BotaoEstiloTitulo("+ Despesa Fixa", new Color(220, 167, 235));
+        JButton btnEntrada = new BotaoEstiloTitulo("+ Entrada", new Color(227, 196, 83)); // Cor azul claro
 
         btnDespesa.addActionListener(e -> abrirDialogoNovaDespesa(false));
         btnDespesaFixa.addActionListener(e -> abrirDialogoNovaDespesa(true));
+        btnEntrada.addActionListener(e -> abrirDialogoNovaEntrada());
 
         painelTituloComBotoes.add(btnDespesa);
         painelTituloComBotoes.add(btnDespesaFixa);
+        painelTituloComBotoes.add(btnEntrada);
+        
         painelDireito.add(painelTituloComBotoes, BorderLayout.NORTH);
 
         listaDespesas = new JPanel(new GridBagLayout());
         listaDespesas.setBackground(new Color(238, 238, 238));
         listaDespesas.setOpaque(true);
 
-        preencherListaDespesas();
+        preencherListaItens();
 
         JScrollPane scrollDespesas = new JScrollPane(listaDespesas);
         scrollDespesas.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
@@ -188,11 +193,21 @@ public class Janela extends JFrame {
         caixaDespesas.setValor(String.format("%.2f €", controller.getTotalDespesas()));
         caixaPoupanca.setValor(String.format("%.2f €", controller.getPoupancaAcumulada()));
 
-        preencherListaDespesas();
+        preencherListaItens();
         atualizarGrafico(fxPanel);
     }
 
-    private void preencherListaDespesas() {
+    private static class ItemViewData {
+        int id; String nome; double montante;
+        boolean fixa; boolean paga; boolean eEntrada;
+
+        ItemViewData(int id, String nome, double montante, boolean fixa, boolean paga, boolean eEntrada) {
+            this.id = id; this.nome = nome; this.montante = montante;
+            this.fixa = fixa; this.paga = paga; this.eEntrada = eEntrada;
+        }
+    }
+
+    private void preencherListaItens() {
         listaDespesas.removeAll();
         GridBagConstraints gbcList = new GridBagConstraints();
         gbcList.gridx = 0; gbcList.gridy = 0;
@@ -200,11 +215,8 @@ public class Janela extends JFrame {
         gbcList.anchor = GridBagConstraints.NORTH;
         gbcList.insets = new Insets(2, 2, 2, 2);
 
-        for (Despesa despesa : getDespesasOrdenadas()) {
-            boolean fixa = despesa instanceof DespesaFixa;
-            boolean paga = fixa && ((DespesaFixa) despesa).isPago();
-            listaDespesas.add(new ItemDespesa(despesa.getIdDespesa(), despesa.getNome(), 
-                              String.format("%.2f €", despesa.getMontante()), fixa, paga), gbcList);
+        for (ItemViewData item : getItensOrdenados()) {
+            listaDespesas.add(new ItemRegisto(item.id, item.nome, item.montante, item.fixa, item.paga, item.eEntrada), gbcList);
             gbcList.gridy++;
         }
 
@@ -216,21 +228,35 @@ public class Janela extends JFrame {
         SwingUtilities.invokeLater(() -> listaDespesas.updateUI());
     }
 
-    private List<Despesa> getDespesasOrdenadas() {
-        List<Despesa> originais = controller.getDespesasMesAtual();
-        if (originais == null) return new ArrayList<>();
+    private List<ItemViewData> getItensOrdenados() {
+        List<ItemViewData> itens = new ArrayList<>();
         
-        List<Despesa> despesas = new ArrayList<>(originais);
-        despesas.sort((d1, d2) -> {
-            boolean d1Fixa = d1 instanceof DespesaFixa;
-            boolean d2Fixa = d2 instanceof DespesaFixa;
+        List<Despesa> despesas = controller.getDespesasMesAtual();
+        if (despesas != null) {
+            for (Despesa d : despesas) {
+                boolean fixa = d instanceof DespesaFixa;
+                boolean paga = fixa && ((DespesaFixa) d).isPago();
+                itens.add(new ItemViewData(d.getIdDespesa(), d.getNome(), d.getMontante(), fixa, paga, false));
+            }
+        }
+
+        List<Entrada> entradas = controller.getEntradasMesAtual();
+        if (entradas != null) {
+            for (Entrada e : entradas) {
+                itens.add(new ItemViewData(e.getIdEntrada(), e.getNome(), e.getMontante(), false, false, true));
+            }
+        }
+        
+        // ORDENAÇÃO: Despesas Fixas sempre no topo. De seguida, Entradas e Despesas ordenadas por ID recente.
+        itens.sort((i1, i2) -> {
+            if (i1.fixa && !i2.fixa) return -1;
+            if (!i1.fixa && i2.fixa) return 1;
             
-            if (d1Fixa && !d2Fixa) return -1;
-            if (!d1Fixa && d2Fixa) return 1;
-            
-            return Integer.compare(d2.getIdDespesa(), d1.getIdDespesa());
+            // Se as duas forem fixas ou as duas não forem, ordenamos por ID decrescente
+            return Integer.compare(i2.id, i1.id);
         });
-        return despesas;
+        
+        return itens;
     }
 
     private String mostrarDialogoInputSemBorda(String mensagem) {
@@ -239,8 +265,7 @@ public class Janela extends JFrame {
 
         try {
             dialog.setBackground(new Color(0, 0, 0, 0)); 
-        } catch (Exception e) {
-        }
+        } catch (Exception e) {}
 
         PainelSombra painelSombra = new PainelSombra();
         JPanel painelConteudo = new JPanel(new BorderLayout(10, 15));
@@ -399,6 +424,22 @@ public class Janela extends JFrame {
         }
     }
 
+    private void abrirDialogoNovaEntrada() {
+        String nome = mostrarDialogoInputSemBorda("Nome da entrada:");
+        if (nome == null || nome.trim().isEmpty()) return;
+
+        String valorStr = mostrarDialogoInputSemBorda("Valor da entrada (€):");
+        if (valorStr == null || valorStr.trim().isEmpty()) return;
+
+        try {
+            double valor = Double.parseDouble(valorStr.replace(",", "."));
+            controller.adicionarEntrada(nome, valor);
+            atualizarVista();
+        } catch (NumberFormatException ex) {
+            JOptionPane.showMessageDialog(this, "Valor inválido!", "Erro", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
     private void atualizarGrafico(JFXPanel fxPanel) {
         List<Despesa> despesas = controller.getDespesasMesAtual();
         if (despesas == null) return;
@@ -537,15 +578,15 @@ public class Janela extends JFrame {
             fundoTitulo.setOpaque(false);
 
             JLabel lblTitulo = new JLabel(titulo);
-            lblTitulo.setFont(new Font("Arial", Font.BOLD, 42));
+            lblTitulo.setFont(new Font("Arial", Font.BOLD, 36)); 
             fundoTitulo.add(lblTitulo);
 
-            if (titulo.equalsIgnoreCase("Salário")) {
+            if (titulo.equalsIgnoreCase("Base") || titulo.equalsIgnoreCase("Salário")) {
                 JButton btnEditar = new BotaoRedondoAzul("✏️");
                 fundoTitulo.add(btnEditar);
                 btnEditar.addActionListener(e -> {
                     Janela j = (Janela) SwingUtilities.getWindowAncestor(this);
-                    String novoStr = j.mostrarDialogoInputSemBorda("Novo salário (€):");
+                    String novoStr = j.mostrarDialogoInputSemBorda("Novo rendimento base (€):");
                     if (novoStr == null || novoStr.trim().isEmpty()) return;
                     try {
                         j.controller.atualizarRendimento(Double.parseDouble(novoStr.replace(",", ".")));
@@ -591,33 +632,35 @@ public class Janela extends JFrame {
         private final Color corFundo;
         public BotaoEstiloTitulo(String texto, Color corFundo) {
             super(texto); this.corFundo = corFundo;
-            setFont(new Font("Arial", Font.BOLD, 26)); setForeground(new Color(84, 84, 84));
+            setFont(new Font("Arial", Font.BOLD, 22)); 
+            setForeground(new Color(84, 84, 84));
             setFocusPainted(false); setContentAreaFilled(false); setBorderPainted(false);
-            setMargin(new Insets(10, 20, 10, 20));
+            setMargin(new Insets(10, 15, 10, 15));
         }
         @Override public Dimension getPreferredSize() {
-            return new Dimension(getFontMetrics(getFont()).stringWidth(getText()) + 50, 50);
+            return new Dimension(getFontMetrics(getFont()).stringWidth(getText()) + 40, 45);
         }
         @Override protected void paintComponent(Graphics g) {
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g2.setColor(corFundo); g2.fillRoundRect(0, 0, getWidth(), getHeight(), 50, 50);
+            g2.setColor(corFundo); g2.fillRoundRect(0, 0, getWidth(), getHeight(), 45, 45);
             super.paintComponent(g); g2.dispose();
         }
     }
 
-    private static class ItemDespesa extends JPanel {
-        public ItemDespesa(int id, String nome, String valor, boolean fixa, boolean paga) {
+    private static class ItemRegisto extends JPanel {
+        public ItemRegisto(int id, String nome, double montante, boolean fixa, boolean paga, boolean eEntrada) {
             setLayout(new FlowLayout(FlowLayout.LEFT, 10, 10));
             setOpaque(false);
 
-            JCheckBox chkPaga = fixa ? new JCheckBox() : null;
+            JCheckBox chkPaga = (fixa && !eEntrada) ? new JCheckBox() : null;
             if (chkPaga != null) { chkPaga.setSelected(paga); chkPaga.setOpaque(false); }
 
             JLabel lblNome = new JLabel(nome);
             lblNome.setFont(new Font("Arial", Font.BOLD, 20)); lblNome.setForeground(Color.WHITE);
 
-            JLabel lblValor = new JLabel(valor);
+            String prefixo = eEntrada ? "+ " : "";
+            JLabel lblValor = new JLabel(String.format("%s%.2f €", prefixo, montante));
             lblValor.setFont(new Font("Arial", Font.PLAIN, 20)); lblValor.setForeground(Color.WHITE);
 
             JPanel painelConteudo = new JPanel() {
@@ -627,7 +670,14 @@ public class Janela extends JFrame {
                     g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                     
                     Janela j = (Janela) SwingUtilities.getWindowAncestor(this);
-                    Color base = j != null ? j.gerarCorParaNome(nome) : Color.GRAY;
+                    
+                    // COR FIXA PARA ENTRADAS AQUI!
+                    Color base;
+                    if (eEntrada) {
+                        base = new Color(227, 196, 83); // Cor do botão "+ Entrada"
+                    } else {
+                        base = j != null ? j.gerarCorParaNome(nome) : Color.GRAY;
+                    }
                     
                     if (fixa && chkPaga != null && !chkPaga.isSelected()) {
                         base = new Color(base.getRed(), base.getGreen(), base.getBlue(), 100);
@@ -656,30 +706,32 @@ public class Janela extends JFrame {
 
             btnEditar.addActionListener(e -> {
                 Janela j = (Janela) SwingUtilities.getWindowAncestor(this);
-                Color corDaDespesa = j.gerarCorParaNome(nome);
-                String hexCor = String.format("#%02x%02x%02x", corDaDespesa.getRed(), corDaDespesa.getGreen(), corDaDespesa.getBlue());
+                // Usamos também a cor azul claro para combinar no diálogo de edição!
+                Color corElemento = eEntrada ? new Color(227, 196, 83) : j.gerarCorParaNome(nome);
+                String hexCor = String.format("#%02x%02x%02x", corElemento.getRed(), corElemento.getGreen(), corElemento.getBlue());
                 String msg = "<html>Novo valor para <b><font color='" + hexCor + "'>" + nome + "</font></b>:</html>";
                 String novoVal = j.mostrarDialogoInputSemBorda(msg);
                 if (novoVal == null || novoVal.trim().isEmpty()) return;
                 try {
-                    if (fixa) j.controller.editarDespesaFixaFuturas(id, Double.parseDouble(novoVal.replace(",", ".")));
-                    else j.controller.editarDespesa(id, Double.parseDouble(novoVal.replace(",", ".")));
+                    double nValor = Double.parseDouble(novoVal.replace(",", "."));
+                    if (eEntrada) j.controller.editarEntrada(id, nValor);
+                    else if (fixa) j.controller.editarDespesaFixaFuturas(id, nValor);
+                    else j.controller.editarDespesa(id, nValor);
                     j.atualizarVista();
                 } catch (Exception ex) { JOptionPane.showMessageDialog(this, "Erro ao editar!"); }
             });
 
             btnRemover.addActionListener(e -> {
                 Janela j = (Janela) SwingUtilities.getWindowAncestor(this);
-                Color corDaDespesa = j.gerarCorParaNome(nome);
-                String hexCor = String.format("#%02x%02x%02x", corDaDespesa.getRed(), corDaDespesa.getGreen(), corDaDespesa.getBlue());
-                String msg = "<html>Tem a certeza que deseja remover a despesa <b><font color='" + hexCor + "'>" + nome + "</font></b>?</html>";
+                Color corElemento = eEntrada ? new Color(227, 196, 83) : j.gerarCorParaNome(nome);
+                String hexCor = String.format("#%02x%02x%02x", corElemento.getRed(), corElemento.getGreen(), corElemento.getBlue());
+                String tipo = eEntrada ? "entrada" : "despesa";
+                String msg = "<html>Remover a " + tipo + " <b><font color='" + hexCor + "'>" + nome + "</font></b>?</html>";
                 boolean confirmar = j.mostrarDialogoConfirmacaoSemBorda(msg);
                 if (confirmar) {
-                    if (fixa) {
-                        j.controller.removerDespesaFixaFuturas(id);
-                    } else {
-                        j.controller.removerDespesa(id);
-                    }
+                    if (eEntrada) j.controller.removerEntrada(id);
+                    else if (fixa) j.controller.removerDespesaFixaFuturas(id);
+                    else j.controller.removerDespesa(id);
                     j.atualizarVista();
                 }
             });

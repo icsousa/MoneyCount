@@ -9,6 +9,7 @@ import java.util.Map;
 
 import model.Despesa;
 import model.DespesaFixa;
+import model.Entrada;
 import model.MoneyCount;
 import model.Registo;
 
@@ -40,14 +41,16 @@ public class MoneyCountController {
         return modelo.getRegistos().get(dataModelo);
     }
 
+    // Devolve APENAS o rendimento base (ex: Salário)
     public Double getRendimentoAtual() {
         Registo r = getRegistoAtual();
         return r != null ? r.getRendimento() : 0.0;
     }
 
+    // NOVO: O Saldo conta com a base + as entradas extra - as despesas
     public Double getSaldoAtual() {
         Registo r = getRegistoAtual();
-        return r != null ? r.getRendimento() - r.getTotalDespesas() : 0.0;
+        return r != null ? r.getRendimento() + r.getTotalEntradas() - r.getTotalDespesas() : 0.0;
     }
 
     public double getTotalDespesas() {
@@ -77,10 +80,12 @@ public class MoneyCountController {
 
         for (Map.Entry<YearMonth, Registo> entry : modelo.getRegistos().entrySet()) {
             Registo r = entry.getValue();
-            double saldoMes = r.getRendimento() - r.getTotalDespesas();
+            
+            // Saldo real do mês: Rendimento Base + Entradas - Despesas
+            double saldoMes = r.getRendimento() + r.getTotalEntradas() - r.getTotalDespesas();
 
             if (entry.getKey().equals(dataModelo)) {
-                rendimento = r.getRendimento();
+                rendimento = r.getRendimento(); // Para o gráfico/resumo, a base mantém-se separada
                 despesas = r.getTotalDespesas();
                 saldo = saldoMes;
             }
@@ -102,7 +107,8 @@ public class MoneyCountController {
         for (Map.Entry<YearMonth, Registo> entry : modelo.getRegistos().entrySet()) {
             if (entry.getKey().isBefore(hoje)) {
                 Registo r = entry.getValue();
-                total += r.getRendimento() - r.getTotalDespesas();
+                // A poupança antiga também tem de contar com as entradas extra!
+                total += r.getRendimento() + r.getTotalEntradas() - r.getTotalDespesas();
             }
         }
         return total;
@@ -119,38 +125,54 @@ public class MoneyCountController {
     }
 
     // ==========================================
-    // LÓGICA DE GESTÃO DE DESPESAS E IDs
+    // LÓGICA DE GESTÃO DE DESPESAS, ENTRADAS E IDs
     // ==========================================
 
     /**
      * Procura em todos os registos qual é o ID mais elevado e devolve esse ID + 1.
-     * Isto previne que despesas novas sobreponham despesas antigas ao reabrir a app.
+     * Partilhado entre Entradas e Despesas para manter uma ordem cronológica limpa.
      */
     private int gerarProximoId() {
         int maxId = -1;
         for (Registo r : modelo.getRegistos().values()) {
             for (Integer id : r.getDespesas().keySet()) {
-                if (id > maxId) {
-                    maxId = id;
-                }
+                if (id > maxId) maxId = id;
+            }
+            for (Integer id : r.getEntradas().keySet()) {
+                if (id > maxId) maxId = id;
             }
         }
         return maxId + 1;
     }
 
     public void adicionarDespesa(String nome, double valor, boolean fixa) {
-        Registo registo = getRegistoAtual();
-        int novoId = gerarProximoId(); // Garante um ID único!
-
-        Despesa nova;
-        if (fixa) {
-            // Usa o ID gerado, se não tiveres este construtor, tens de usar o setIdDespesa
-            nova = new DespesaFixa(novoId, nome, valor, false);
+        // Formatar o nome: Primeira letra maiúscula
+        if (nome != null && !nome.trim().isEmpty()) {
+            nome = nome.trim();
+            nome = nome.substring(0, 1).toUpperCase() + nome.substring(1);
         } else {
-            nova = new Despesa(novoId, nome, valor);
+            nome = "Despesa sem nome";
         }
 
-        registo.adicionarDespesa(nova);
+        Registo registoAtual = getRegistoAtual();
+        int novoId = gerarProximoId(); // Garante um ID único!
+
+        if (fixa) {
+            DespesaFixa nova = new DespesaFixa(novoId, nome, valor, false);
+            registoAtual.adicionarDespesa(nova);
+
+            // Propaga para meses FUTUROS que já tenham sido criados na memória
+            for (Map.Entry<YearMonth, Registo> entry : modelo.getRegistos().entrySet()) {
+                if (entry.getKey().isAfter(dataModelo)) { 
+                    int idFuturo = gerarProximoId();
+                    DespesaFixa novaFutura = new DespesaFixa(idFuturo, nome, valor, false);
+                    entry.getValue().adicionarDespesa(novaFutura);
+                }
+            }
+        } else {
+            Despesa nova = new Despesa(novoId, nome, valor);
+            registoAtual.adicionarDespesa(nova);
+        }
     }
 
     public void removerDespesa(int idDespesa) {
@@ -180,19 +202,16 @@ public class MoneyCountController {
         Registo registoAtual = modelo.getRegistos().get(dataModelo);
         Registo anterior = modelo.getRegistos().get(mesAnterior);
 
+        // Se o mês ainda não existe, cria-o e copia as despesas fixas do mês anterior.
         if (registoAtual == null) {
             double rendimento = (anterior != null) ? anterior.getRendimento() : 0.0;
             registoAtual = new Registo(dataModelo, rendimento);
             modelo.getRegistos().put(dataModelo, registoAtual);
-        }
 
-        if (anterior != null) {
-            for (Despesa d : anterior.getDespesas().values()) {
-                if (d instanceof DespesaFixa df) {
-                    boolean jaExiste = registoAtual.getDespesas().values().stream()
-                        .anyMatch(existing -> existing.getNome().equals(df.getNome()) && existing instanceof DespesaFixa);
-
-                    if (!jaExiste) {
+            // A cópia de despesas fixas SÓ acontece na criação do mês
+            if (anterior != null) {
+                for (Despesa d : anterior.getDespesas().values()) {
+                    if (d instanceof DespesaFixa df) {
                         int novoId = gerarProximoId(); // Garante um ID único para a cópia!
                         DespesaFixa nova = new DespesaFixa(novoId, df.getNome(), df.getMontante(), false);
                         registoAtual.adicionarDespesa(nova);
@@ -205,7 +224,6 @@ public class MoneyCountController {
     public void marcarDespesaComoPaga(int idDespesa, boolean paga) {
         Registo registo = getRegistoAtual();
         if (registo != null) {
-            // O(1) Lookup: Em vez de percorrer a lista toda com um 'for', vamos diretos ao ID
             Despesa d = registo.getDespesas().get(idDespesa);
             if (d instanceof DespesaFixa df) {
                 df.setPago(paga);
@@ -250,6 +268,48 @@ public class MoneyCountController {
                 r.getDespesas().values().removeIf(d -> 
                     d instanceof DespesaFixa df && df.getNome().equals(nomeDespesa)
                 );
+            }
+        }
+    }
+
+    // ==========================================
+    // MÉTODOS PARA GESTÃO DE ENTRADAS
+    // ==========================================
+
+    public List<Entrada> getEntradasMesAtual() {
+        Registo r = getRegistoAtual();
+        return r != null ? new ArrayList<>(r.getEntradas().values()) : new ArrayList<>();
+    }
+
+    public void adicionarEntrada(String nome, double valor) {
+        // Formatar o nome: Primeira letra maiúscula
+        if (nome != null && !nome.trim().isEmpty()) {
+            nome = nome.trim();
+            nome = nome.substring(0, 1).toUpperCase() + nome.substring(1);
+        } else {
+            nome = "Entrada sem nome"; 
+        }
+
+        Registo registoAtual = getRegistoAtual();
+        int novoId = gerarProximoId(); 
+
+        Entrada nova = new Entrada(novoId, nome, valor);
+        registoAtual.adicionarEntrada(nova);
+    }
+
+    public void removerEntrada(int idEntrada) {
+        Registo registo = getRegistoAtual();
+        if (registo != null) {
+            registo.getEntradas().remove(idEntrada);
+        }
+    }
+
+    public void editarEntrada(int idEntrada, double novoValor) {
+        Registo registo = getRegistoAtual();
+        if (registo != null) {
+            Entrada entrada = registo.getEntradas().get(idEntrada);
+            if (entrada != null) {
+                entrada.setMontante(novoValor);
             }
         }
     }
